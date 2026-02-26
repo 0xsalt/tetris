@@ -2,6 +2,8 @@
 
 A fully functional Tetris game served by [Bun](https://bun.sh). Dark retro theme with scanline effects, glow rendering, and mobile touch controls.
 
+**[Play it live](https://0xsalt.github.io/tetris-demo/)**
+
 <p align="center">
   <img src="screenshots/start.png" width="420" alt="Start screen">
   <img src="screenshots/gameplay.png" width="420" alt="Gameplay">
