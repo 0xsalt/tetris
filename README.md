@@ -19,14 +19,16 @@ A fully functional Tetris game served by [Bun](https://bun.sh). Dark retro theme
 - **Mobile controls** — Touch-friendly buttons on small screens
 - **Responsive** — Canvas auto-sizes to fit the viewport
 
-## Run
+## Quick Start
 
 ```bash
+git clone https://github.com/0xsalt/tetris-demo.git
+cd tetris-demo
 bun install
 bun start
 ```
 
-Opens on `http://localhost:3000` (or set `PORT` env var).
+Opens on `http://localhost:3000` (or set `PORT` env var). See [INSTALL.md](INSTALL.md) for systemd service setup and other options.
 
 ## Controls
 
