@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Private docs
+docs/internal/
+
+# Conductor pipeline state
+.conductor/
+
+# Dorodango polish evidence
+.dorodango/

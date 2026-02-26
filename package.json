@@ -1,0 +1,18 @@
+{
+  "name": "graybeard-demo",
+  "version": "0.1.0-alpha",
+  "description": "TypeScript demo test software",
+  "type": "module",
+  "main": "src/server.ts",
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "build": "bun build src/index.ts --outdir dist",
+    "dev": "bun run --watch src/server.ts",
+    "test": "bun test",
+    "lint": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/bun": "latest"
+  }
+}
