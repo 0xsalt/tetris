@@ -1,7 +1,47 @@
-# Graybeard Demo
+# Tetris Demo
 
-[![Version](https://img.shields.io/badge/version-0.1.0--alpha-blue.svg)](CHANGELOG.md)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/runtime-Bun-purple.svg)](https://bun.sh)
+A fully functional Tetris game served by [Bun](https://bun.sh). Dark retro theme with scanline effects, glow rendering, and mobile touch controls.
 
-> TypeScript demo test software for experimenting with development patterns.
+## Features
+
+- **SRS wall kicks** — Standard Rotation System with full kick tables for all pieces including I-piece
+- **7-bag randomizer** — Fair piece distribution per official Tetris guidelines
+- **Ghost piece** — Preview where the current piece will land
+- **Hold piece** — Swap the current piece into hold with `C`
+- **Next-3 preview** — See the upcoming three pieces
+- **Lock delay** — 500ms lock timer with move reset (max 15 resets)
+- **Scoring** — Level progression, line clear stats (singles/doubles/triples/tetris), high score via localStorage
+- **Mobile controls** — Touch-friendly buttons on small screens
+- **Responsive** — Canvas auto-sizes to fit the viewport
+
+## Run
+
+```bash
+bun install
+bun start
+```
+
+Opens on `http://localhost:3000` (or set `PORT` env var).
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| Arrow Left/Right | Move |
+| Arrow Up | Rotate clockwise |
+| Z | Rotate counter-clockwise |
+| Arrow Down | Soft drop |
+| Space | Hard drop |
+| C | Hold |
+| P / Esc | Pause |
+
+## Stack
+
+- **Runtime:** Bun
+- **Language:** TypeScript
+- **Frontend:** Single HTML file with inline CSS/JS, Canvas API rendering
+- **Server:** `Bun.serve()` static file server
+
+## License
+
+MIT
