@@ -33,37 +33,3 @@ Auto-restarts on file changes:
 bun dev
 ```
 
-## Run as a Background Service (systemd)
-
-Create `~/.config/systemd/user/tetris-demo.service`:
-
-```ini
-[Unit]
-Description=Tetris Demo
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/path/to/tetris-demo
-ExecStart=/home/YOUR_USER/.bun/bin/bun run src/server.ts
-Environment=PORT=9002
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-```
-
-Then enable and start:
-
-```bash
-systemctl --user daemon-reload
-systemctl --user enable tetris-demo
-systemctl --user start tetris-demo
-```
-
-Check status:
-
-```bash
-systemctl --user status tetris-demo
-```
