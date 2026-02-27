@@ -748,7 +748,7 @@
     let lockDelay = 500;
     let lockTimer = null;
     let lockMoves = 0;
-    let touchedSurface = false;
+    let lowestRow = Infinity;
     let flashRows = [];
     let flashTimer = 0;
     let stats = { singles: 0, doubles: 0, triples: 0, tetris: 0 };
@@ -827,6 +827,53 @@
     }
 
     // ============================================================
+    // Lock-delay helpers (Guideline Extended Placement)
+    // ============================================================
+
+    function isOnSurface() {
+      return !isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation);
+    }
+
+    function getLowestMino() {
+      const matrix = getMatrix(currentPiece);
+      let maxRow = 0;
+      for (let r = 0; r < matrix.length; r++) {
+        for (let c = 0; c < matrix[r].length; c++) {
+          if (matrix[r][c]) maxRow = Math.max(maxRow, currentPiece.y + r);
+        }
+      }
+      return maxRow;
+    }
+
+    function updateLockState() {
+      const currentLowest = getLowestMino();
+      const descendedToNewLow = currentLowest > lowestRow;
+
+      if (descendedToNewLow) {
+        lowestRow = currentLowest;
+        lockMoves = 0;
+      }
+
+      if (!isOnSurface()) {
+        clearLockTimer();
+        return;
+      }
+
+      if (!descendedToNewLow) {
+        lockMoves++;
+      }
+
+      if (lockMoves >= 15) {
+        lockPiece();
+        return;
+      }
+
+      clearTimeout(lockTimer);
+      lockTimer = null;
+      startLockTimer();
+    }
+
+    // ============================================================
     // Ghost piece
     // ============================================================
 
@@ -846,7 +893,7 @@
       if (gameState !== 'playing') return;
       if (isValid(currentPiece.x - 1, currentPiece.y, currentPiece.rotation)) {
         currentPiece.x--;
-        resetLockTimer();
+        updateLockState();
       }
     }
 
@@ -854,7 +901,7 @@
       if (gameState !== 'playing') return;
       if (isValid(currentPiece.x + 1, currentPiece.y, currentPiece.rotation)) {
         currentPiece.x++;
-        resetLockTimer();
+        updateLockState();
       }
     }
 
@@ -865,6 +912,7 @@
         score += SOFT_DROP_POINTS;
         updateScore();
         lastDrop = performance.now();
+        updateLockState();
       } else {
         startLockTimer();
       }
@@ -887,16 +935,6 @@
       const oldRot = currentPiece.rotation;
       const newRot = (oldRot + dir + 4) % 4;
 
-      if (touchedSurface) {
-        // On surface: in-place only, no wall kicks
-        if (isValid(currentPiece.x, currentPiece.y, newRot)) {
-          currentPiece.rotation = newRot;
-          resetLockTimer();
-        }
-        return;
-      }
-
-      // Floating: full SRS wall kicks
       const kicks = currentPiece.name === 'I' ? KICKS_I : KICKS_NORMAL;
       const key = `${oldRot}->${newRot}`;
       const kickTable = kicks[key] || [[0,0]];
@@ -906,7 +944,7 @@
           currentPiece.x += kx;
           currentPiece.y -= ky;
           currentPiece.rotation = newRot;
-          resetLockTimer();
+          updateLockState();
           return;
         }
       }
@@ -952,23 +990,6 @@
       }, lockDelay);
     }
 
-    function resetLockTimer() {
-      if (!touchedSurface) return;
-
-      clearTimeout(lockTimer);
-      lockTimer = null;
-      lockMoves++;
-
-      if (lockMoves >= 15) {
-        if (!isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
-          lockPiece();
-        }
-        return;
-      }
-
-      startLockTimer();
-    }
-
     function clearLockTimer() {
       if (lockTimer !== null) {
         clearTimeout(lockTimer);
@@ -979,7 +1000,7 @@
     function resetLockState() {
       clearLockTimer();
       lockMoves = 0;
-      touchedSurface = false;
+      lowestRow = Infinity;
     }
 
     function lockPiece() {
@@ -1065,9 +1086,8 @@
         lastDrop = timestamp;
         if (isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
           currentPiece.y++;
-          clearLockTimer();
+          updateLockState();
         } else {
-          touchedSurface = true;
           startLockTimer();
         }
       }
@@ -1352,7 +1372,7 @@
       dropInterval = getSpeed(1);
       lastDrop = 0;
       flashRows = [];
-      touchedSurface = false;
+      lowestRow = Infinity;
       stats = { singles: 0, doubles: 0, triples: 0, tetris: 0 };
       updateScore();
       spawnPiece();
