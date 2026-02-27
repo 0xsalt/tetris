@@ -932,22 +932,14 @@
 
     function rotate(dir = 1) {
       if (gameState !== 'playing') return;
-      const oldRot = currentPiece.rotation;
-      const newRot = (oldRot + dir + 4) % 4;
+      const newRot = (currentPiece.rotation + dir + 4) % 4;
 
-      const kicks = currentPiece.name === 'I' ? KICKS_I : KICKS_NORMAL;
-      const key = `${oldRot}->${newRot}`;
-      const kickTable = kicks[key] || [[0,0]];
-
-      for (const [kx, ky] of kickTable) {
-        if (isValid(currentPiece.x + kx, currentPiece.y - ky, newRot)) {
-          currentPiece.x += kx;
-          currentPiece.y -= ky;
-          currentPiece.rotation = newRot;
-          updateLockState();
-          return;
-        }
+      // In-place only — no wall kicks, no position displacement
+      if (isValid(currentPiece.x, currentPiece.y, newRot)) {
+        currentPiece.rotation = newRot;
       }
+      // Rotation does not affect lock timer or move counter —
+      // gravity cadence continues uninterrupted
     }
 
     function holdCurrent() {
