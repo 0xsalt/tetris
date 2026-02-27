@@ -1286,10 +1286,7 @@
             if (!matrix[r][c]) continue;
             const px = offsetX + (c - minC) * cellSize;
             const py = offsetY + (r - minR) * cellSize;
-            nextCtx.save();
-            nextCtx.globalAlpha = i === 0 ? 1 : 0.65;
-            drawCellAt(nextCtx, px, py, piece.color, cellSize);
-            nextCtx.restore();
+            drawCell(nextCtx, px, py, piece.color, cellSize, { border: false, alpha: i === 0 ? 1 : 0.65 });
           }
         }
 
