@@ -818,7 +818,8 @@
           const boardY = ny + r;
           if (boardX < 0 || boardX >= COLS) return false;
           if (boardY >= TOTAL_ROWS) return false;
-          if (boardY >= 0 && board[boardY][boardX] !== null) return false;
+          if (boardY < 0) continue; // above playfield — skip (standard spawn behavior)
+          if (board[boardY][boardX] !== null) return false;
         }
       }
       return true;
@@ -943,7 +944,11 @@
         if (lockMoves < 15) {
           startLockTimer();
         } else {
-          lockPiece();
+          // Only force-lock if piece is actually on a surface
+          if (!isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
+            lockPiece();
+          }
+          // else: piece is floating — let gravity bring it down naturally
         }
       }
     }
