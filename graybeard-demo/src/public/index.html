@@ -885,6 +885,20 @@
       if (gameState !== 'playing') return;
       const oldRot = currentPiece.rotation;
       const newRot = (oldRot + dir + 4) % 4;
+
+      // When piece is on a surface, only allow in-place rotation (no wall kicks).
+      // Prevents: kicks pushing piece up (locking 1 row above floor) and
+      // horizontal drift from asymmetric kick offsets during spam rotation.
+      const onSurface = !isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation);
+      if (onSurface) {
+        if (isValid(currentPiece.x, currentPiece.y, newRot)) {
+          currentPiece.rotation = newRot;
+          resetLockTimer();
+        }
+        return;
+      }
+
+      // Normal rotation with full SRS wall kicks when floating
       const kicks = currentPiece.name === 'I' ? KICKS_I : KICKS_NORMAL;
       const key = `${oldRot}->${newRot}`;
       const kickTable = kicks[key] || [[0,0]];
@@ -932,7 +946,13 @@
     function startLockTimer() {
       if (lockTimer !== null) return;
       lockTimer = setTimeout(() => {
-        lockPiece();
+        // Only lock if piece is actually on a surface — a wall kick during
+        // the delay window may have moved the piece up, leaving it floating.
+        if (!isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
+          lockPiece();
+        } else {
+          lockTimer = null; // floating — let gravity bring it down
+        }
       }, lockDelay);
     }
 
