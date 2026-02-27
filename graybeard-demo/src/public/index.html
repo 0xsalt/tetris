@@ -748,6 +748,7 @@
     let lockDelay = 500;
     let lockTimer = null;
     let lockMoves = 0;
+    let touchedSurface = false;
     let flashRows = [];
     let flashTimer = 0;
     let stats = { singles: 0, doubles: 0, triples: 0, tetris: 0 };
@@ -886,11 +887,8 @@
       const oldRot = currentPiece.rotation;
       const newRot = (oldRot + dir + 4) % 4;
 
-      // When piece is on a surface, only allow in-place rotation (no wall kicks).
-      // Prevents: kicks pushing piece up (locking 1 row above floor) and
-      // horizontal drift from asymmetric kick offsets during spam rotation.
-      const onSurface = !isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation);
-      if (onSurface) {
+      if (touchedSurface) {
+        // On surface: in-place only, no wall kicks
         if (isValid(currentPiece.x, currentPiece.y, newRot)) {
           currentPiece.rotation = newRot;
           resetLockTimer();
@@ -898,7 +896,7 @@
         return;
       }
 
-      // Normal rotation with full SRS wall kicks when floating
+      // Floating: full SRS wall kicks
       const kicks = currentPiece.name === 'I' ? KICKS_I : KICKS_NORMAL;
       const key = `${oldRot}->${newRot}`;
       const kickTable = kicks[key] || [[0,0]];
@@ -946,31 +944,29 @@
     function startLockTimer() {
       if (lockTimer !== null) return;
       lockTimer = setTimeout(() => {
-        // Only lock if piece is actually on a surface — a wall kick during
-        // the delay window may have moved the piece up, leaving it floating.
         if (!isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
           lockPiece();
         } else {
-          lockTimer = null; // floating — let gravity bring it down
+          lockTimer = null;
         }
       }, lockDelay);
     }
 
     function resetLockTimer() {
-      if (lockTimer !== null) {
-        clearTimeout(lockTimer);
-        lockTimer = null;
-        lockMoves++;
-        if (lockMoves < 15) {
-          startLockTimer();
-        } else {
-          // Only force-lock if piece is actually on a surface
-          if (!isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
-            lockPiece();
-          }
-          // else: piece is floating — let gravity bring it down naturally
+      if (!touchedSurface) return;
+
+      clearTimeout(lockTimer);
+      lockTimer = null;
+      lockMoves++;
+
+      if (lockMoves >= 15) {
+        if (!isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
+          lockPiece();
         }
+        return;
       }
+
+      startLockTimer();
     }
 
     function clearLockTimer() {
@@ -983,6 +979,7 @@
     function resetLockState() {
       clearLockTimer();
       lockMoves = 0;
+      touchedSurface = false;
     }
 
     function lockPiece() {
@@ -1070,6 +1067,7 @@
           currentPiece.y++;
           clearLockTimer();
         } else {
+          touchedSurface = true;
           startLockTimer();
         }
       }
@@ -1354,6 +1352,7 @@
       dropInterval = getSpeed(1);
       lastDrop = 0;
       flashRows = [];
+      touchedSurface = false;
       stats = { singles: 0, doubles: 0, triples: 0, tetris: 0 };
       updateScore();
       spawnPiece();
