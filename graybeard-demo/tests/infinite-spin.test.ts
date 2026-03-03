@@ -15,23 +15,29 @@ function boardWithSolidRow(row: number): Board {
   return b;
 }
 
-// Lock state models for verifying infinite-spin fix semantics
+// Lock state models for verifying lock delay semantics
 //
-// clearLockTimer — clears the timer only, does NOT reset lockMoves.
-// This is what gravityTick() calls: the move counter survives a downward step.
+// The lock system uses a timestamp-based state machine:
+//   lockPhase: 'falling' | 'locking' | 'locked'
+//   lockStartTime: timestamp when locking began (0 = not locking)
+//   lockMoves: counter of player actions during lock phase
+//
+// When piece goes off-surface (gravity descent), phase returns to 'falling'
+// but lockMoves is preserved — the move counter survives a downward step.
 interface LockState {
-  lockTimer: ReturnType<typeof setTimeout> | null;
+  lockPhase: 'falling' | 'locking' | 'locked';
+  lockStartTime: number;
   lockMoves: number;
 }
 
-function modelClearLockTimer(state: LockState): LockState {
-  return { ...state, lockTimer: null };
+function modelReturnToFalling(state: LockState): LockState {
+  return { ...state, lockPhase: 'falling', lockStartTime: 0 };
 }
 
-// resetLockState — clears timer AND resets lockMoves to 0.
+// resetLockState — resets all lock state for a new piece.
 // Used by spawnPiece(), holdCurrent(), lockPiece(), triggerGameOver().
 function modelResetLockState(_state: LockState): LockState {
-  return { lockTimer: null, lockMoves: 0 };
+  return { lockPhase: 'falling', lockStartTime: 0, lockMoves: 0 };
 }
 
 // ============================================================
@@ -60,43 +66,44 @@ describe("infinite-spin fix — lock move counter threshold", () => {
 });
 
 // ============================================================
-// clearLockTimer semantics — timer only, lockMoves preserved
+// Return to falling semantics — lockMoves preserved on descent
 // ============================================================
 
-describe("infinite-spin fix — clearLockTimer preserves lockMoves", () => {
-  test("clearLockTimer does NOT reset lockMoves (gravity tick scenario)", () => {
-    // Simulates gravityTick(): piece moves down, timer clears, but move count
-    // is preserved so accumulated rotations cannot be undone by gravity.
-    const before: LockState = { lockTimer: null, lockMoves: 10 };
-    const after = modelClearLockTimer(before);
+describe("infinite-spin fix — return to falling preserves lockMoves", () => {
+  test("returning to falling does NOT reset lockMoves (gravity descent scenario)", () => {
+    // Simulates gravityTick(): piece moves down off surface, phase returns to
+    // falling but move count is preserved so accumulated actions cannot be undone.
+    const before: LockState = { lockPhase: 'locking', lockStartTime: 1000, lockMoves: 10 };
+    const after = modelReturnToFalling(before);
     expect(after.lockMoves).toBe(10); // counter preserved
-    expect(after.lockTimer).toBeNull();
+    expect(after.lockPhase).toBe('falling');
+    expect(after.lockStartTime).toBe(0);
   });
 
-  test("clearLockTimer at lockMoves=0 keeps it at 0", () => {
-    const state: LockState = { lockTimer: null, lockMoves: 0 };
-    const after = modelClearLockTimer(state);
+  test("return to falling at lockMoves=0 keeps it at 0", () => {
+    const state: LockState = { lockPhase: 'locking', lockStartTime: 1000, lockMoves: 0 };
+    const after = modelReturnToFalling(state);
     expect(after.lockMoves).toBe(0);
   });
 
-  test("clearLockTimer at lockMoves=14 keeps it at 14", () => {
-    const state: LockState = { lockTimer: null, lockMoves: 14 };
-    const after = modelClearLockTimer(state);
+  test("return to falling at lockMoves=14 keeps it at 14", () => {
+    const state: LockState = { lockPhase: 'locking', lockStartTime: 1000, lockMoves: 14 };
+    const after = modelReturnToFalling(state);
     expect(after.lockMoves).toBe(14);
   });
 
-  test("infinite-spin cycle: lockMoves not reset by repeated gravity ticks", () => {
+  test("infinite-spin cycle: lockMoves not reset by repeated gravity descents", () => {
     // Reproduce the bug scenario: piece surfaces, player rotates 10 times,
-    // gravity moves piece down, clearLockTimer fires. Without the fix,
-    // lockMoves would reset to 0 on each gravity step, allowing unlimited rotations.
+    // gravity moves piece down. Without the fix, lockMoves would reset to 0
+    // on each gravity step, allowing unlimited rotations.
     // With the fix, lockMoves accumulates across gravity steps.
-    let state: LockState = { lockTimer: null, lockMoves: 0 };
+    let state: LockState = { lockPhase: 'falling', lockStartTime: 0, lockMoves: 0 };
 
     // Player rotates 10 times on surface
-    state = { ...state, lockMoves: 10 };
+    state = { ...state, lockPhase: 'locking', lockStartTime: 1000, lockMoves: 10 };
 
-    // Gravity moves piece down → clearLockTimer (timer only)
-    state = modelClearLockTimer(state);
+    // Gravity moves piece down → return to falling (phase only)
+    state = modelReturnToFalling(state);
     expect(state.lockMoves).toBe(10); // counter survives gravity step
 
     // Player rotates 4 more times on the new surface
@@ -117,30 +124,31 @@ describe("infinite-spin fix — clearLockTimer preserves lockMoves", () => {
 // resetLockState semantics — used on spawn/hold/lock events
 // ============================================================
 
-describe("infinite-spin fix — resetLockState resets lockMoves on new piece events", () => {
+describe("infinite-spin fix — resetLockState resets all lock state on new piece events", () => {
   test("resetLockState resets lockMoves to 0 on new piece spawn", () => {
     // When a new piece spawns, the move counter must reset so the new piece
     // gets its full 15-move allowance.
-    const before: LockState = { lockTimer: null, lockMoves: 14 };
+    const before: LockState = { lockPhase: 'locking', lockStartTime: 1000, lockMoves: 14 };
     const after = modelResetLockState(before);
     expect(after.lockMoves).toBe(0);
-    expect(after.lockTimer).toBeNull();
+    expect(after.lockPhase).toBe('falling');
+    expect(after.lockStartTime).toBe(0);
   });
 
   test("resetLockState resets lockMoves to 0 on hold", () => {
-    const state: LockState = { lockTimer: null, lockMoves: 7 };
+    const state: LockState = { lockPhase: 'locking', lockStartTime: 500, lockMoves: 7 };
     const after = modelResetLockState(state);
     expect(after.lockMoves).toBe(0);
   });
 
   test("resetLockState resets lockMoves to 0 when piece locks", () => {
-    const state: LockState = { lockTimer: null, lockMoves: 15 };
+    const state: LockState = { lockPhase: 'locked', lockStartTime: 0, lockMoves: 15 };
     const after = modelResetLockState(state);
     expect(after.lockMoves).toBe(0);
   });
 
   test("resetLockState resets lockMoves to 0 on game over", () => {
-    const state: LockState = { lockTimer: null, lockMoves: 3 };
+    const state: LockState = { lockPhase: 'locking', lockStartTime: 200, lockMoves: 3 };
     const after = modelResetLockState(state);
     expect(after.lockMoves).toBe(0);
   });

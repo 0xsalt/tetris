@@ -101,10 +101,10 @@ describe("lock delay move counter semantics", () => {
     expect(MAX_LOCK_MOVES).toBe(15);
   });
 
-  test("clearLockTimer resets move counter to 0 (model: counter must be 0 after clear)", () => {
-    // Model the clearLockTimer reset: any lockMoves value resets to 0
+  test("resetLockState resets move counter to 0 (model: counter must be 0 after reset)", () => {
+    // Model the resetLockState: any lockMoves value resets to 0
     let lockMoves = 14;
-    // simulate clear
+    // simulate reset
     lockMoves = 0;
     expect(lockMoves).toBe(0);
   });
