@@ -749,7 +749,6 @@
     let lockPhase = 'falling';  // 'falling' | 'locking' | 'locked'
     let lockStartTime = 0;     // timestamp when locking began (0 = not locking)
     let lockMoves = 0;
-    let lowestRow = 0;         // actual lowest mino row — set on spawn
     let flashRows = [];
     let flashTimer = 0;
     let stats = { singles: 0, doubles: 0, triples: 0, tetris: 0 };
@@ -846,26 +845,27 @@
       return maxRow;
     }
 
-    function updateLockState() {
+    // Called after each successful player move or rotation (not gravity).
+    // Per research pseudocode: onPieceMoveOrRotate() increments counter,
+    // resets timer if under cap. Separated from lock timer management.
+    function onPieceMoveOrRotate() {
       if (lockPhase === 'locked') return;
 
-      const currentLowest = getLowestMino();
-      const descendedToNewLow = currentLowest > lowestRow;
-
-      if (descendedToNewLow) {
-        lowestRow = currentLowest;
-        lockMoves = 0;
-        lockStartTime = 0;
-      }
-
       if (!isOnSurface()) {
-        lockPhase = 'falling';
-        lockStartTime = 0;
-        lastDrop = performance.now() - dropInterval;
+        if (lockPhase === 'locking') {
+          lockPhase = 'falling';
+          lockStartTime = 0;
+          lockMoves = 0;
+          lastDrop = performance.now() - dropInterval;
+        }
         return;
       }
 
-      lockMoves++;
+      // On surface — count the move, restart timer if under cap
+      if (lockMoves < 15) {
+        lockMoves++;
+        lockStartTime = performance.now();
+      }
 
       if (lockMoves >= 15) {
         lockPiece();
@@ -873,7 +873,6 @@
       }
 
       lockPhase = 'locking';
-      lockStartTime = performance.now();
     }
 
     // ============================================================
@@ -896,7 +895,7 @@
       if (gameState !== 'playing') return;
       if (isValid(currentPiece.x - 1, currentPiece.y, currentPiece.rotation)) {
         currentPiece.x--;
-        updateLockState();
+        onPieceMoveOrRotate();
       }
     }
 
@@ -904,7 +903,7 @@
       if (gameState !== 'playing') return;
       if (isValid(currentPiece.x + 1, currentPiece.y, currentPiece.rotation)) {
         currentPiece.x++;
-        updateLockState();
+        onPieceMoveOrRotate();
       }
     }
 
@@ -915,9 +914,19 @@
         score += SOFT_DROP_POINTS;
         updateScore();
         lastDrop = performance.now();
-        updateLockState();
-      } else {
-        updateLockState();
+        // Descent resets lock counter (fresh moves at new position)
+        lockMoves = 0;
+        if (isOnSurface()) {
+          lockPhase = 'locking';
+          lockStartTime = performance.now();
+        } else {
+          lockPhase = 'falling';
+          lockStartTime = 0;
+        }
+      } else if (lockPhase !== 'locking') {
+        // Already on surface — start locking (not a player move)
+        lockPhase = 'locking';
+        lockStartTime = performance.now();
       }
     }
 
@@ -940,7 +949,7 @@
       // In-place only — no wall kicks, no position displacement
       if (isValid(currentPiece.x, currentPiece.y, newRot)) {
         currentPiece.rotation = newRot;
-        updateLockState();
+        onPieceMoveOrRotate();
       }
     }
 
@@ -977,7 +986,6 @@
       lockPhase = 'falling';
       lockStartTime = 0;
       lockMoves = 0;
-      lowestRow = getLowestMino();
     }
 
     function lockPiece() {
@@ -1064,21 +1072,30 @@
         lastDrop = timestamp;
         if (isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
           currentPiece.y++;
-          updateLockState();
+          // Gravity descent resets lock counter (fresh moves at new position)
+          lockMoves = 0;
+          if (isOnSurface()) {
+            lockPhase = 'locking';
+            lockStartTime = timestamp;
+          } else {
+            lockPhase = 'falling';
+            lockStartTime = 0;
+          }
         } else if (lockPhase !== 'locking') {
           lockPhase = 'locking';
           lockStartTime = timestamp;
         }
       }
 
-      // Check lock timer expiry (timestamp-based, no setTimeout)
+      // Check lock timer expiry (per research: updateLockDelay ticks timer)
       if (lockPhase === 'locking' && lockStartTime > 0) {
         if (timestamp - lockStartTime >= lockDelay) {
-          if (!isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
+          if (isOnSurface()) {
             lockPiece();
           } else {
             lockPhase = 'falling';
             lockStartTime = 0;
+            lockMoves = 0;
             lastDrop = timestamp - dropInterval;
           }
         }
@@ -1367,7 +1384,6 @@
       lockPhase = 'falling';
       lockStartTime = 0;
       lockMoves = 0;
-      lowestRow = 0;
       stats = { singles: 0, doubles: 0, triples: 0, tetris: 0 };
       updateScore();
       spawnPiece();
