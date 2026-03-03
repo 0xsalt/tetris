@@ -937,9 +937,8 @@
       // In-place only — no wall kicks, no position displacement
       if (isValid(currentPiece.x, currentPiece.y, newRot)) {
         currentPiece.rotation = newRot;
+        updateLockState();
       }
-      // Rotation does not affect lock timer or move counter —
-      // gravity cadence continues uninterrupted
     }
 
     function holdCurrent() {
