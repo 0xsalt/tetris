@@ -869,9 +869,7 @@
         return;
       }
 
-      clearTimeout(lockTimer);
-      lockTimer = null;
-      startLockTimer();
+      startLockTimer(); // no-ops if timer already running — no restart on moves
     }
 
     // ============================================================
