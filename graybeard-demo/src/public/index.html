@@ -555,19 +555,6 @@
     </div>
   </div>
 
-  <!-- Debug telemetry overlay (toggle with backtick key) -->
-  <div id="debug-overlay" style="display:none; position:fixed; bottom:10px; left:10px; background:rgba(0,0,0,0.9); color:#0ff; font-family:'Courier New',monospace; font-size:11px; padding:10px 14px; border:1px solid #0ff; border-radius:6px; z-index:9999; min-width:280px; line-height:1.5;">
-    <div style="color:#666; margin-bottom:4px;">DEBUG (` to toggle)</div>
-    <div id="dbg-piece">piece: -</div>
-    <div id="dbg-pos">pos: -</div>
-    <div id="dbg-lock">lock: -</div>
-    <div id="dbg-surface">surface: -</div>
-    <div id="dbg-moves">moves: -</div>
-    <div id="dbg-timer">timer: -</div>
-    <div id="dbg-events" style="color:#888; margin-top:4px;">events: 0</div>
-    <button id="dbg-export" style="margin-top:6px; background:#0ff; color:#000; border:none; padding:4px 10px; cursor:pointer; font-family:inherit; font-size:11px; border-radius:3px;">Copy Log to Clipboard</button>
-  </div>
-
   <!-- Mobile controls -->
   <div class="mobile-controls" id="mobile-controls">
     <div class="mobile-btn-row">
@@ -767,44 +754,6 @@
     let stats = { singles: 0, doubles: 0, triples: 0, tetris: 0 };
 
     // ============================================================
-    // Telemetry — session event logging for debugging
-    // ============================================================
-
-    let sessionLog = [];
-    let debugVisible = false;
-    const MAX_LOG_ENTRIES = 5000;
-
-    function logEvent(type, detail) {
-      if (sessionLog.length >= MAX_LOG_ENTRIES) return;
-      const entry = {
-        t: Math.round(performance.now()),
-        type: type,
-        piece: currentPiece ? currentPiece.name : null,
-        x: currentPiece ? currentPiece.x : null,
-        y: currentPiece ? currentPiece.y : null,
-        rot: currentPiece ? currentPiece.rotation : null,
-        lockPhase: lockPhase,
-        lockMoves: lockMoves,
-        lockTimer: lockStartTime > 0 ? Math.round(performance.now() - lockStartTime) : 0,
-        surface: currentPiece ? !isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation) : null,
-      };
-      if (detail) entry.detail = detail;
-      sessionLog.push(entry);
-      updateDebugOverlay(entry);
-    }
-
-    function updateDebugOverlay(e) {
-      if (!debugVisible) return;
-      const el = (id) => document.getElementById(id);
-      el('dbg-piece').textContent = 'piece: ' + (e.piece || '-');
-      el('dbg-pos').textContent = 'pos: x=' + e.x + ' y=' + e.y + ' rot=' + e.rot;
-      el('dbg-lock').textContent = 'lock: ' + e.lockPhase;
-      el('dbg-surface').textContent = 'surface: ' + e.surface;
-      el('dbg-moves').textContent = 'moves: ' + e.lockMoves + '/15';
-      el('dbg-timer').textContent = 'timer: ' + e.lockTimer + 'ms / ' + lockDelay + 'ms';
-      el('dbg-events').textContent = 'events: ' + sessionLog.length;
-    }
-
     function initBoard() {
       board = Array.from({ length: TOTAL_ROWS }, () => Array(COLS).fill(null));
     }
@@ -846,7 +795,6 @@
       };
       canHold = true;
       resetLockState();
-      logEvent('spawn', currentPiece.name);
 
       // Check immediate collision = game over
       if (!isValid(currentPiece.x, currentPiece.y, currentPiece.rotation)) {
@@ -903,8 +851,6 @@
     // resets timer if under cap. Separated from lock timer management.
     function onPieceMoveOrRotate() {
       if (lockPhase === 'locked') return;
-      const prevPhase = lockPhase;
-      const prevMoves = lockMoves;
 
       if (!isOnSurface()) {
         if (lockPhase === 'locking') {
@@ -912,7 +858,6 @@
           lockStartTime = 0;
           lockMoves = 0;
           lastDrop = performance.now() - dropInterval;
-          logEvent('lock:off-surface', 'was=' + prevPhase + ' moves=' + prevMoves + '->0');
         }
         return;
       }
@@ -924,13 +869,11 @@
       }
 
       if (lockMoves >= 15) {
-        logEvent('lock:cap-reached', 'moves=15 forcing lock');
         lockPiece();
         return;
       }
 
       lockPhase = 'locking';
-      logEvent('lock:move-counted', 'moves=' + lockMoves + ' timer-reset');
     }
 
     // ============================================================
@@ -1048,7 +991,6 @@
 
     function lockPiece() {
       if (lockPhase === 'locked') return;
-      logEvent('lockPiece', 'moves=' + lockMoves + ' x=' + currentPiece.x + ' y=' + currentPiece.y);
       lockPhase = 'locked';
       const matrix = getMatrix(currentPiece);
       for (let r = 0; r < matrix.length; r++) {
@@ -1130,14 +1072,12 @@
       if (timestamp - lastDrop >= dropInterval) {
         lastDrop = timestamp;
         if (isValid(currentPiece.x, currentPiece.y + 1, currentPiece.rotation)) {
-          const prevY = currentPiece.y;
           currentPiece.y++;
           // Gravity descent resets lock counter (fresh moves at new position)
           lockMoves = 0;
           if (isOnSurface()) {
             lockPhase = 'locking';
             lockStartTime = timestamp;
-            logEvent('gravity:land', 'y=' + prevY + '->' + currentPiece.y + ' on-surface');
           } else {
             lockPhase = 'falling';
             lockStartTime = 0;
@@ -1145,7 +1085,6 @@
         } else if (lockPhase !== 'locking') {
           lockPhase = 'locking';
           lockStartTime = timestamp;
-          logEvent('gravity:stuck', 'cant-descend start-locking');
         }
       }
 
@@ -1153,14 +1092,12 @@
       if (lockPhase === 'locking' && lockStartTime > 0) {
         if (timestamp - lockStartTime >= lockDelay) {
           if (isOnSurface()) {
-            logEvent('lock:timer-expired', 'on-surface locking-piece');
             lockPiece();
           } else {
             lockPhase = 'falling';
             lockStartTime = 0;
             lockMoves = 0;
             lastDrop = timestamp - dropInterval;
-            logEvent('lock:timer-expired', 'off-surface reset-to-falling');
           }
         }
       }
@@ -1432,7 +1369,6 @@
     // ============================================================
 
     function startGame() {
-      sessionLog = [];
       initBoard();
       bag = [];
       nextQueue = [];
@@ -1473,7 +1409,6 @@
     }
 
     function triggerGameOver() {
-      logEvent('gameOver', 'score=' + score + ' lines=' + lines);
       gameState = 'gameover';
       resetLockState();
       document.getElementById('final-score').textContent = score.toLocaleString();
@@ -1490,17 +1425,8 @@
     const REPEAT_INTERVAL = 40;
 
     document.addEventListener('keydown', (e) => {
-      // Debug overlay toggle
-      if (e.code === 'Backquote') {
-        debugVisible = !debugVisible;
-        document.getElementById('debug-overlay').style.display = debugVisible ? 'block' : 'none';
-        return;
-      }
-
       if (keys[e.code]) return; // Already held
       keys[e.code] = true;
-
-      if (gameState === 'playing') logEvent('key', e.code);
 
       switch (e.code) {
         case 'ArrowLeft':
@@ -1562,16 +1488,6 @@
     document.getElementById('btn-start').addEventListener('click', startGame);
     document.getElementById('btn-resume').addEventListener('click', resumeGame);
     document.getElementById('btn-restart').addEventListener('click', startGame);
-
-    // Debug export
-    document.getElementById('dbg-export').addEventListener('click', () => {
-      const json = JSON.stringify(sessionLog, null, 2);
-      navigator.clipboard.writeText(json).then(() => {
-        const btn = document.getElementById('dbg-export');
-        btn.textContent = 'Copied! (' + sessionLog.length + ' events)';
-        setTimeout(() => { btn.textContent = 'Copy Log to Clipboard'; }, 2000);
-      });
-    });
 
     // Mobile controls
     function setupMobileBtn(id, action, repeat = false) {
