@@ -11,8 +11,8 @@ curl -fsSL https://bun.sh/install | bash
 ## Quick Start
 
 ```bash
-git clone https://github.com/0xsalt/tetris-demo.git
-cd tetris-demo
+git clone https://github.com/0xsalt/tetris.git
+cd tetris
 bun install
 bun start
 ```
