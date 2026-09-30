@@ -85,7 +85,11 @@ function setJev(on: boolean) {
 
 toggle.addEventListener("click", () => setJev(!jevOn));
 
+// One piece per second at most. Without this Jev plays ~4 pieces/s and one viewer spends the daily cap in ~15 minutes.
+const PACE_MS = 1000;
+
 async function decideFor(piece: NonNullable<typeof currentPiece>) {
+  const started = performance.now();
   pending = true;
   gravityPaused = true;
   try {
@@ -116,6 +120,10 @@ async function decideFor(piece: NonNullable<typeof currentPiece>) {
     }
     const conf = typeof body.confidence === "number" ? `${Math.round(body.confidence * 100)}%` : "?";
     logLine(`${piece.name} → ${body.choice}  ${body.record.latency_ms}ms  conf ${conf}`);
+    // Hold the piece at the top until the pace interval ends: watchable, and the budget lasts.
+    const wait = PACE_MS - (performance.now() - started);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    if (currentPiece !== piece || !jevOn) return;
     piece.rotation = body.rotation;
     piece.x = body.x;
     piece.y = 0;
@@ -141,4 +149,5 @@ function tick() {
 }
 
 fetch("/api/jev/status").then(r => r.json()).then(s => showStatus(s)).catch(() => {});
+if (new URLSearchParams(location.search).get("jev") === "1") setJev(true); // kiosk mode: ?jev=1 starts Jev on load
 requestAnimationFrame(tick);
