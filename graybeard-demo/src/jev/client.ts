@@ -39,19 +39,16 @@ card.className = "card";
 card.id = "jev-card";
 card.innerHTML = `
   <style>
-    #jev-toggle { position:relative; width:36px; height:20px; border:none; border-radius:10px; padding:0;
+    #jev-toggle { position:relative; width:22px; height:12px; border:none; border-radius:6px; padding:0;
                   background:#3a3a44; cursor:pointer; transition:background 0.2s; flex-shrink:0; }
-    #jev-toggle::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
-                         border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.4); transition:left 0.2s; }
+    #jev-toggle::after { content:""; position:absolute; top:1px; left:1px; width:10px; height:10px;
+                         border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.4); transition:left 0.2s; }
     #jev-toggle[aria-checked="true"] { background:#34c759; }
-    #jev-toggle[aria-checked="true"]::after { left:18px; }
+    #jev-toggle[aria-checked="true"]::after { left:11px; }
   </style>
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
     <div class="card-label" style="margin:0;">Jev</div>
     <button id="jev-toggle" role="switch" aria-checked="false" aria-label="Jev plays"></button>
-  </div>
-  <div id="jev-fuel" style="margin-top:8px;height:6px;background:#222;border-radius:3px;overflow:hidden;">
-    <div id="jev-fuel-bar" style="height:100%;width:100%;background:#39ff88;"></div>
   </div>
   <div id="jev-stats" style="margin-top:6px;font-size:0.65rem;line-height:1.5;white-space:nowrap;overflow:hidden;"></div>
   <div id="jev-log" style="margin-top:6px;font-size:0.6rem;line-height:1.4;max-height:220px;overflow:hidden;font-family:monospace;"></div>
@@ -78,23 +75,22 @@ function placeCard() {
 }
 placeCard();
 window.addEventListener("resize", placeCard);
+
+// Controls sit under the line-clear stats on the left, leaving the right side to Hold, Next and Jev.
 const controlsCard = document.querySelector(".controls-card") as HTMLElement | null;
+if (controlsCard) leftPanel.appendChild(controlsCard);
 
 const toggle = document.getElementById("jev-toggle") as HTMLButtonElement;
 const stats = document.getElementById("jev-stats")!;
-const fuelBar = document.getElementById("jev-fuel-bar") as HTMLElement;
 const logEl = document.getElementById("jev-log")!;
 
 function showStatus(s: Status, extra = "") {
-  const left = Math.max(0, 1 - s.tokens_today / s.daily_cap);
-  fuelBar.style.width = `${(left * 100).toFixed(1)}%`;
-  fuelBar.style.background = left > 0.25 ? "#39ff88" : left > 0.1 ? "#ffcc00" : "#ff4466";
   const usd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(5) : n.toFixed(2)}`;
   // One short fact per line, each under ~20 characters, so nothing wraps in the 160px tablet panel.
   stats.innerHTML = [
-    `${usd(s.cost_today_usd)} / ${usd(s.daily_cap_usd)} today`,
     `${usd(s.cost_per_call_usd)} per call`,
     `${usd(s.cost_total_usd)} all time`,
+    `${usd(s.cost_today_usd)} / ${usd(s.daily_cap_usd)} today`,
     `${s.calls_today.toLocaleString()} calls today`,
     `${s.calls_total.toLocaleString()} calls total`,
     `${(s.tokens_today / 1e6).toFixed(2)}M tok today`,
@@ -123,7 +119,6 @@ function newGame() {
 function setJev(on: boolean) {
   jevOn = on;
   toggle.setAttribute("aria-checked", String(on));
-  if (controlsCard) controlsCard.style.display = on ? "none" : "";
   gravityPaused = false;
   if (on && gameState !== "playing") newGame();
 }
