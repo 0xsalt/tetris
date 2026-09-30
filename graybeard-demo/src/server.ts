@@ -67,6 +67,12 @@ const server = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
 
+    // No URL turns Jev on. Redirect old ?jev=... links to the plain address so none implies it can.
+    if (url.searchParams.has("jev")) {
+      url.searchParams.delete("jev");
+      return Response.redirect(url.pathname + url.search, 302);
+    }
+
     if (url.pathname === "/api/jev/status") return json({ ...status(), recent: log.recent.slice(-20) });
     if (url.pathname === "/api/decide" && req.method === "POST") return handleDecide(req);
     if (url.pathname === "/jev/client.js" && clientBundle) {
