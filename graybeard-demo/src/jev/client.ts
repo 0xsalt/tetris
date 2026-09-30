@@ -171,7 +171,6 @@ function tick() {
 }
 
 fetch("/api/jev/status").then(r => r.json()).then(s => showStatus(s)).catch(() => {});
-// Jev is OFF on load, always: opening the page must never spend money unseen. Only an explicit
-// ?jev=1 (recordings, kiosk) starts it.
-if (new URLSearchParams(location.search).get("jev") === "1") setJev(true);
+// Jev is OFF on every load, whatever the URL: opening the page must never spend money unseen.
+// Only the switch turns it on.
 requestAnimationFrame(tick);
