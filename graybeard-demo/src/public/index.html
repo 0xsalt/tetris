@@ -762,10 +762,13 @@
     // Bag / piece generation (7-bag randomizer)
     // ============================================================
 
+    // Swappable so an automated player can seed the bag and replay a game exactly.
+    let rng = Math.random;
+
     function refillBag() {
       const newBag = [...PIECE_NAMES];
       for (let i = newBag.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = Math.floor(rng() * (i + 1));
         [newBag[i], newBag[j]] = [newBag[j], newBag[i]];
       }
       bag = bag.concat(newBag);
@@ -1064,8 +1067,10 @@
     // Gravity loop
     // ============================================================
 
+    let gravityPaused = false; // set by an automated player while it waits on a decision
+
     function gravityTick(timestamp) {
-      if (gameState !== 'playing') return;
+      if (gameState !== 'playing' || gravityPaused) return;
 
       if (!lastDrop) lastDrop = timestamp;
 
