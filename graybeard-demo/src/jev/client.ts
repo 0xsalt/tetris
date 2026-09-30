@@ -34,14 +34,20 @@ card.className = "card";
 card.id = "jev-card";
 card.innerHTML = `
   <div class="card-label" style="margin-bottom:8px;">Jev</div>
-  <button id="jev-toggle" style="width:100%;padding:6px;font:inherit;cursor:pointer;">JEV PLAYS: OFF</button>
+  <button id="jev-toggle" style="width:100%;padding:6px;font:inherit;cursor:pointer;">JEV: OFF</button>
   <div id="jev-fuel" style="margin-top:8px;height:6px;background:#222;border-radius:3px;overflow:hidden;">
     <div id="jev-fuel-bar" style="height:100%;width:100%;background:#39ff88;"></div>
   </div>
   <div id="jev-stats" style="margin-top:6px;font-size:0.65rem;line-height:1.5;"></div>
   <div id="jev-log" style="margin-top:6px;font-size:0.6rem;line-height:1.4;max-height:220px;overflow:hidden;font-family:monospace;"></div>
 `;
-document.querySelector(".panel-right")!.appendChild(card);
+// Own column to the right of Hold/Next; `panel-right` keeps the existing mobile rule that hides side panels.
+const column = document.createElement("div");
+column.className = "panel-right";
+column.style.width = "220px";
+column.appendChild(card);
+document.querySelector(".panel-right")!.after(column);
+(document.querySelector(".game-wrapper") as HTMLElement).style.maxWidth = "1140px";
 const controlsCard = document.querySelector(".controls-card") as HTMLElement | null;
 
 const toggle = document.getElementById("jev-toggle") as HTMLButtonElement;
@@ -77,7 +83,7 @@ function newGame() {
 
 function setJev(on: boolean) {
   jevOn = on;
-  toggle.textContent = `JEV PLAYS: ${on ? "ON" : "OFF"}`;
+  toggle.textContent = `JEV: ${on ? "ON" : "OFF"}`;
   if (controlsCard) controlsCard.style.display = on ? "none" : "";
   gravityPaused = false;
   if (on && gameState !== "playing") newGame();
@@ -149,5 +155,6 @@ function tick() {
 }
 
 fetch("/api/jev/status").then(r => r.json()).then(s => showStatus(s)).catch(() => {});
-if (new URLSearchParams(location.search).get("jev") === "1") setJev(true); // kiosk mode: ?jev=1 starts Jev on load
+// Jev starts on load, so the service-dashboard's plain link opens straight into the demo. ?jev=0 opens a human game.
+if (new URLSearchParams(location.search).get("jev") !== "0") setJev(true);
 requestAnimationFrame(tick);
