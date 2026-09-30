@@ -1,13 +1,15 @@
 import { homedir } from "node:os";
 import { PIECE_NAMES } from "./game-logic";
 import { enumeratePlacements, parseBoard } from "./jev/placements";
-import { Budget, CallLog, decide, loadApiKey } from "./jev/jev";
+import { Budget, CallLog, USD_PER_INPUT_TOKEN, decide, loadApiKey } from "./jev/jev";
 
 // Loopback only. Tailnet access comes from `tailscale serve` in front of this port.
 const HOSTNAME = "127.0.0.1";
 const JEV_ENV_FILE = process.env.JEV_ENV_FILE || `${homedir()}/.config/tetris-demo/jev.env`;
 const JEV_LOG_FILE = process.env.JEV_LOG_FILE || `${homedir()}/.local/state/tetris-demo/jev-calls.jsonl`;
-const JEV_DAILY_TOKEN_CAP = parseInt(process.env.JEV_DAILY_TOKEN_CAP || "5000000");
+// Daily spend ceiling in dollars, converted to billed input tokens at TypeSafe's list price.
+const JEV_DAILY_USD_CAP = parseFloat(process.env.JEV_DAILY_USD_CAP || "1.50");
+const JEV_DAILY_TOKEN_CAP = Math.floor(JEV_DAILY_USD_CAP / USD_PER_INPUT_TOKEN);
 
 const apiKey = loadApiKey(JEV_ENV_FILE);
 const log = new CallLog(JEV_LOG_FILE);
@@ -29,9 +31,14 @@ function status() {
   return {
     enabled: apiKey !== null,
     calls_total: log.count,
+    calls_today: budget.callsToday,
     tokens_today: budget.spent,
     daily_cap: budget.dailyCap,
     exhausted: budget.exhausted,
+    cost_today_usd: budget.spent * USD_PER_INPUT_TOKEN,
+    cost_total_usd: log.inputTokens * USD_PER_INPUT_TOKEN,
+    cost_per_call_usd: budget.callsToday ? (budget.spent * USD_PER_INPUT_TOKEN) / budget.callsToday : 0,
+    daily_cap_usd: JEV_DAILY_USD_CAP,
   };
 }
 

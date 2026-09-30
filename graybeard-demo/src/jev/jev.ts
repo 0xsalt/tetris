@@ -9,6 +9,8 @@ import { describePlacement, type Placement } from "./placements";
 
 export const JEV_ENDPOINT = "https://api.typesafe.ai/v1/systemone";
 export const JEV_MODEL = "jev-latest";
+// TypeSafe list price: $0.042 per million input tokens; output tokens are free.
+export const USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;
 
 export interface CallRecord {
   ts: string;
@@ -38,6 +40,7 @@ export function loadApiKey(envFile: string): string | null {
 export class Budget {
   private day = "";
   private used = 0;
+  private calls = 0;
   constructor(readonly dailyCap: number, private logFile: string) {
     this.rollover();
     if (existsSync(logFile)) {
@@ -45,30 +48,38 @@ export class Budget {
         if (!line) continue;
         try {
           const rec = JSON.parse(line) as CallRecord;
-          if (rec.ts.slice(0, 10) === this.day) this.used += rec.input_tokens || 0;
+          if (rec.ts.slice(0, 10) === this.day && rec.input_tokens) { this.used += rec.input_tokens; this.calls++; }
         } catch { /* skip a torn line */ }
       }
     }
   }
   private rollover() {
     const today = new Date().toISOString().slice(0, 10);
-    if (today !== this.day) { this.day = today; this.used = 0; }
+    if (today !== this.day) { this.day = today; this.used = 0; this.calls = 0; }
   }
   get spent() { this.rollover(); return this.used; }
+  get callsToday() { this.rollover(); return this.calls; }
   get exhausted() { return this.spent >= this.dailyCap; }
-  charge(tokens: number) { this.rollover(); this.used += tokens; }
+  charge(tokens: number) { this.rollover(); this.used += tokens; this.calls++; }
 }
 
 export class CallLog {
   count = 0;
+  inputTokens = 0;
   recent: CallRecord[] = [];
   constructor(private file: string) {
     mkdirSync(dirname(file), { recursive: true });
-    if (existsSync(file)) this.count = readFileSync(file, "utf8").split("\n").filter(Boolean).length;
+    if (!existsSync(file)) return;
+    for (const line of readFileSync(file, "utf8").split("\n")) {
+      if (!line) continue;
+      this.count++;
+      try { this.inputTokens += (JSON.parse(line) as CallRecord).input_tokens || 0; } catch { /* torn line */ }
+    }
   }
   append(rec: CallRecord) {
     appendFileSync(this.file, JSON.stringify(rec) + "\n");
     this.count++;
+    this.inputTokens += rec.input_tokens;
     this.recent.push(rec);
     if (this.recent.length > 50) this.recent.shift();
   }

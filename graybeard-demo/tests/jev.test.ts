@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { COLS, TOTAL_ROWS, PIECES, refillBag, type Board } from "../src/game-logic";
 import { enumeratePlacements, describePlacement, parseBoard } from "../src/jev/placements";
-import { Budget, CallLog, buildRequest, decide, loadApiKey } from "../src/jev/jev";
+import { Budget, CallLog, USD_PER_INPUT_TOKEN, buildRequest, decide, loadApiKey } from "../src/jev/jev";
 import { mulberry32 } from "../src/jev/seed";
 
 function emptyBoard(): Board {
@@ -117,6 +117,19 @@ describe("Budget", () => {
     await decide("k", "O", [], enumeratePlacements(emptyBoard(), "O"), log, new Budget(1_000_000, file),
       fakeJev({ type: "choice", choice: "r0x-1", confidence: 1 }));
     expect(new Budget(1_000_000, file).spent).toBe(700);
+  });
+  test("counts today's billed calls and all-time input tokens for cost display", async () => {
+    const file = tmpLog();
+    const log = new CallLog(file);
+    const budget = new Budget(1_000_000, file);
+    const placements = enumeratePlacements(emptyBoard(), "O");
+    for (let i = 0; i < 3; i++) {
+      await decide("k", "O", [], placements, log, budget, fakeJev({ type: "choice", choice: "r0x-1", confidence: 1 }));
+    }
+    expect(budget.callsToday).toBe(3);
+    expect(new CallLog(file).inputTokens).toBe(2100);
+    expect(new Budget(1_000_000, file).callsToday).toBe(3);
+    expect(2100 * USD_PER_INPUT_TOKEN).toBeCloseTo(0.0000882, 10);
   });
 });
 

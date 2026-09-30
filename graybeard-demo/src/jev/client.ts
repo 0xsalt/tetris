@@ -17,7 +17,12 @@ declare function startGame(): void;
 declare function hardDrop(): void;
 declare function isValid(nx: number, ny: number, rot: number, pieceName?: string): boolean;
 
-interface Status { enabled: boolean; calls_total: number; tokens_today: number; daily_cap: number; exhausted: boolean }
+interface Status {
+  enabled: boolean; exhausted: boolean;
+  calls_total: number; calls_today: number;
+  tokens_today: number; daily_cap: number;
+  cost_today_usd: number; cost_total_usd: number; cost_per_call_usd: number; daily_cap_usd: number;
+}
 
 function boardWire(): string[] {
   return board.map(row => row.map(cell => (cell === null ? "0" : "1")).join(""));
@@ -41,13 +46,28 @@ card.innerHTML = `
   <div id="jev-stats" style="margin-top:6px;font-size:0.65rem;line-height:1.5;"></div>
   <div id="jev-log" style="margin-top:6px;font-size:0.6rem;line-height:1.4;max-height:220px;overflow:hidden;font-family:monospace;"></div>
 `;
-// Own column to the right of Hold/Next; `panel-right` keeps the existing mobile rule that hides side panels.
+// Own column to the right of Hold/Next when the screen has room; otherwise under Next, which is
+// where it fits on a tablet in portrait. `panel-right` keeps the mobile rule that hides side panels.
+const rightPanel = document.querySelector(".panel-right") as HTMLElement;
+const leftPanel = document.querySelector(".panel-left") as HTMLElement;
 const column = document.createElement("div");
 column.className = "panel-right";
 column.style.width = "220px";
-column.appendChild(card);
-document.querySelector(".panel-right")!.after(column);
+rightPanel.after(column);
 (document.querySelector(".game-wrapper") as HTMLElement).style.maxWidth = "1140px";
+
+function placeCard() {
+  column.style.display = "";
+  column.appendChild(card);
+  const overflows = column.getBoundingClientRect().right > document.documentElement.clientWidth
+    || leftPanel.getBoundingClientRect().left < 0;
+  if (overflows) {
+    rightPanel.appendChild(card);
+    column.style.display = "none";
+  }
+}
+placeCard();
+window.addEventListener("resize", placeCard);
 const controlsCard = document.querySelector(".controls-card") as HTMLElement | null;
 
 const toggle = document.getElementById("jev-toggle") as HTMLButtonElement;
@@ -59,9 +79,12 @@ function showStatus(s: Status, extra = "") {
   const left = Math.max(0, 1 - s.tokens_today / s.daily_cap);
   fuelBar.style.width = `${(left * 100).toFixed(1)}%`;
   fuelBar.style.background = left > 0.25 ? "#39ff88" : left > 0.1 ? "#ffcc00" : "#ff4466";
+  const usd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(5) : n.toFixed(2)}`;
   stats.innerHTML =
-    `calls: ${s.calls_total.toLocaleString()}<br>` +
-    `tokens today: ${s.tokens_today.toLocaleString()} / ${s.daily_cap.toLocaleString()}<br>` +
+    `cost today: ${usd(s.cost_today_usd)} / ${usd(s.daily_cap_usd)}<br>` +
+    `per call: ${usd(s.cost_per_call_usd)} · all time: ${usd(s.cost_total_usd)}<br>` +
+    `calls today: ${s.calls_today.toLocaleString()} · total: ${s.calls_total.toLocaleString()}<br>` +
+    `tokens today: ${s.tokens_today.toLocaleString()}<br>` +
     `seed: ${seed}${extra ? "<br>" + extra : ""}`;
 }
 
