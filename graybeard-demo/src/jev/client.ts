@@ -43,7 +43,7 @@ card.innerHTML = `
   <div id="jev-fuel" style="margin-top:8px;height:6px;background:#222;border-radius:3px;overflow:hidden;">
     <div id="jev-fuel-bar" style="height:100%;width:100%;background:#39ff88;"></div>
   </div>
-  <div id="jev-stats" style="margin-top:6px;font-size:0.65rem;line-height:1.5;"></div>
+  <div id="jev-stats" style="margin-top:6px;font-size:0.65rem;line-height:1.5;white-space:nowrap;overflow:hidden;"></div>
   <div id="jev-log" style="margin-top:6px;font-size:0.6rem;line-height:1.4;max-height:220px;overflow:hidden;font-family:monospace;"></div>
 `;
 // Own column to the right of Hold/Next when the screen has room; otherwise under Next, which is
@@ -80,12 +80,17 @@ function showStatus(s: Status, extra = "") {
   fuelBar.style.width = `${(left * 100).toFixed(1)}%`;
   fuelBar.style.background = left > 0.25 ? "#39ff88" : left > 0.1 ? "#ffcc00" : "#ff4466";
   const usd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(5) : n.toFixed(2)}`;
-  stats.innerHTML =
-    `cost today: ${usd(s.cost_today_usd)} / ${usd(s.daily_cap_usd)}<br>` +
-    `per call: ${usd(s.cost_per_call_usd)} · all time: ${usd(s.cost_total_usd)}<br>` +
-    `calls today: ${s.calls_today.toLocaleString()} · total: ${s.calls_total.toLocaleString()}<br>` +
-    `tokens today: ${s.tokens_today.toLocaleString()}<br>` +
-    `seed: ${seed}${extra ? "<br>" + extra : ""}`;
+  // One short fact per line, each under ~20 characters, so nothing wraps in the 160px tablet panel.
+  stats.innerHTML = [
+    `${usd(s.cost_today_usd)} / ${usd(s.daily_cap_usd)} today`,
+    `${usd(s.cost_per_call_usd)} per call`,
+    `${usd(s.cost_total_usd)} all time`,
+    `${s.calls_today.toLocaleString()} calls today`,
+    `${s.calls_total.toLocaleString()} calls total`,
+    `${(s.tokens_today / 1e6).toFixed(2)}M tok today`,
+    `seed ${seed}`,
+    ...(extra ? [extra] : []),
+  ].join("<br>");
 }
 
 function logLine(text: string, color = "#9ad") {
@@ -102,7 +107,7 @@ function newGame() {
   rng = mulberry32(seed);
   lastPiece = null;
   startGame();
-  logLine(`— new game, seed ${seed} —`, "#777");
+  logLine(`new game ${seed}`, "#777");
 }
 
 function setJev(on: boolean) {
@@ -132,12 +137,12 @@ async function decideFor(piece: NonNullable<typeof currentPiece>) {
     showStatus(body);
 
     if (res.status === 429 && body.exhausted) {
-      logLine("budget spent for today — Jev stops", "#ff4466");
+      logLine("budget spent: off", "#ff4466");
       setJev(false);
       return;
     }
     if (!res.ok) {
-      logLine(`error ${res.status}: ${String(body.error).slice(0, 80)}`, "#ff8844");
+      logLine(`error ${res.status}`, "#ff8844"); // full detail is in the server's call log
       lastPiece = null; // retry this piece on the next frame
       await new Promise(r => setTimeout(r, 1000));
       return;
@@ -145,7 +150,7 @@ async function decideFor(piece: NonNullable<typeof currentPiece>) {
 
     // The server already rejected answers outside its list; re-check against the live board.
     if (currentPiece !== piece || !isValid(body.x, 0, body.rotation)) {
-      logLine(`skipped ${body.choice}: board changed`, "#ff8844");
+      logLine(`skip ${body.choice} (moved)`, "#ff8844");
       return;
     }
     const conf = typeof body.confidence === "number" ? `${Math.round(body.confidence * 100)}%` : "?";
@@ -171,7 +176,7 @@ function tick() {
       lastPiece = currentPiece;
       decideFor(currentPiece);
     } else if (gameState === "gameover" && !restartTimer) {
-      logLine("game over — restarting in 3s", "#777");
+      logLine("game over, restart 3s", "#777");
       restartTimer = setTimeout(() => { restartTimer = null; if (jevOn) newGame(); }, 3000);
     }
   }
