@@ -91,6 +91,7 @@ function showStatus(s: Status, extra = "") {
 function logLine(text: string, color = "#9ad") {
   const line = document.createElement("div");
   line.style.color = color;
+  line.style.whiteSpace = "nowrap";
   line.textContent = text;
   logEl.prepend(line);
   while (logEl.childElementCount > 14) logEl.lastElementChild!.remove();
@@ -148,7 +149,7 @@ async function decideFor(piece: NonNullable<typeof currentPiece>) {
       return;
     }
     const conf = typeof body.confidence === "number" ? `${Math.round(body.confidence * 100)}%` : "?";
-    logLine(`${piece.name} → ${body.choice}  ${body.record.latency_ms}ms  conf ${conf}`);
+    logLine(`${piece.name}→${body.choice} ${body.record.latency_ms}ms ${conf}`);
     // Hold the piece at the top until the pace interval ends: watchable, and the budget lasts.
     const wait = PACE_MS - (performance.now() - started);
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
