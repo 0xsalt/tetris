@@ -53,28 +53,10 @@ card.innerHTML = `
   <div id="jev-stats" style="margin-top:6px;font-size:0.65rem;line-height:1.5;white-space:nowrap;overflow:hidden;"></div>
   <div id="jev-log" style="margin-top:6px;font-size:0.6rem;line-height:1.4;max-height:220px;overflow:hidden;font-family:monospace;"></div>
 `;
-// Own column to the right of Hold/Next when the screen has room; otherwise under Next, which is
-// where it fits on a tablet in portrait. `panel-right` keeps the mobile rule that hides side panels.
+// Always under Next on the right, at every screen width.
 const rightPanel = document.querySelector(".panel-right") as HTMLElement;
 const leftPanel = document.querySelector(".panel-left") as HTMLElement;
-const column = document.createElement("div");
-column.className = "panel-right";
-column.style.width = "220px";
-rightPanel.after(column);
-(document.querySelector(".game-wrapper") as HTMLElement).style.maxWidth = "1140px";
-
-function placeCard() {
-  column.style.display = "";
-  column.appendChild(card);
-  const overflows = column.getBoundingClientRect().right > document.documentElement.clientWidth
-    || leftPanel.getBoundingClientRect().left < 0;
-  if (overflows) {
-    rightPanel.appendChild(card);
-    column.style.display = "none";
-  }
-}
-placeCard();
-window.addEventListener("resize", placeCard);
+rightPanel.appendChild(card);
 
 // Controls sit under the line-clear stats on the left, leaving the right side to Hold, Next and Jev.
 const controlsCard = document.querySelector(".controls-card") as HTMLElement | null;
@@ -189,6 +171,7 @@ function tick() {
 }
 
 fetch("/api/jev/status").then(r => r.json()).then(s => showStatus(s)).catch(() => {});
-// Jev starts on load, so the service-dashboard's plain link opens straight into the demo. ?jev=0 opens a human game.
-if (new URLSearchParams(location.search).get("jev") !== "0") setJev(true);
+// Jev is OFF on load, always: opening the page must never spend money unseen. Only an explicit
+// ?jev=1 (recordings, kiosk) starts it.
+if (new URLSearchParams(location.search).get("jev") === "1") setJev(true);
 requestAnimationFrame(tick);
