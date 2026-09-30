@@ -38,8 +38,18 @@ const card = document.createElement("div");
 card.className = "card";
 card.id = "jev-card";
 card.innerHTML = `
-  <div class="card-label" style="margin-bottom:8px;">Jev</div>
-  <button id="jev-toggle" style="width:100%;padding:6px;font:inherit;cursor:pointer;">JEV: OFF</button>
+  <style>
+    #jev-toggle { position:relative; width:36px; height:20px; border:none; border-radius:10px; padding:0;
+                  background:#3a3a44; cursor:pointer; transition:background 0.2s; flex-shrink:0; }
+    #jev-toggle::after { content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
+                         border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.4); transition:left 0.2s; }
+    #jev-toggle[aria-checked="true"] { background:#34c759; }
+    #jev-toggle[aria-checked="true"]::after { left:18px; }
+  </style>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+    <div class="card-label" style="margin:0;">Jev</div>
+    <button id="jev-toggle" role="switch" aria-checked="false" aria-label="Jev plays"></button>
+  </div>
   <div id="jev-fuel" style="margin-top:8px;height:6px;background:#222;border-radius:3px;overflow:hidden;">
     <div id="jev-fuel-bar" style="height:100%;width:100%;background:#39ff88;"></div>
   </div>
@@ -112,7 +122,7 @@ function newGame() {
 
 function setJev(on: boolean) {
   jevOn = on;
-  toggle.textContent = `JEV: ${on ? "ON" : "OFF"}`;
+  toggle.setAttribute("aria-checked", String(on));
   if (controlsCard) controlsCard.style.display = on ? "none" : "";
   gravityPaused = false;
   if (on && gameState !== "playing") newGame();
