@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { COLS, TOTAL_ROWS, PIECES, refillBag, type Board } from "../src/game-logic";
-import { enumeratePlacements, describePlacement, parseBoard } from "../src/jev/placements";
+import { boardFacts, enumeratePlacements, describePlacement, parseBoard } from "../src/jev/placements";
 import { Budget, CallLog, USD_PER_INPUT_TOKEN, buildRequest, decide, loadApiKey } from "../src/jev/jev";
 import { mulberry32 } from "../src/jev/seed";
 
@@ -45,7 +45,7 @@ describe("enumeratePlacements — features", () => {
     const best = enumeratePlacements(b, "I").find(p => p.columns[0] === 9 && p.columns[1] === 9)!;
     expect(best.linesCleared).toBe(4);
     expect(best.heightAfter).toBe(0);
-    expect(describePlacement(best)).toContain("a Tetris");
+    expect(describePlacement(best).summary).toContain("a Tetris");
   });
   test("a flat O on the floor adds no holes", () => {
     const p = enumeratePlacements(emptyBoard(), "O")[0];
@@ -69,6 +69,8 @@ describe("parseBoard", () => {
   test("rejects non-arrays", () => expect(parseBoard("nope")).toBeNull());
 });
 
+const facts = boardFacts(emptyBoard());
+
 describe("decide", () => {
   const placements = enumeratePlacements(emptyBoard(), "O");
 
@@ -76,7 +78,7 @@ describe("decide", () => {
     const file = tmpLog();
     const log = new CallLog(file);
     const budget = new Budget(1_000_000, file);
-    const r = await decide("k", "O", [], placements, log, budget, fakeJev({ type: "choice", choice: placements[3].key, probabilities: {}, confidence: 0.8 }));
+    const r = await decide("k", "O", [], placements, facts, log, budget, fakeJev({ type: "choice", choice: placements[3].key, probabilities: {}, confidence: 0.8 }));
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.decision.choice).toBe(placements[3].key);
     expect(log.count).toBe(1);
@@ -85,22 +87,33 @@ describe("decide", () => {
 
   test("rejects an answer outside the placement list", async () => {
     const file = tmpLog();
-    const r = await decide("k", "O", [], placements, new CallLog(file), new Budget(1_000_000, file), fakeJev({ type: "choice", choice: "rm -rf /", confidence: 1 }));
+    const r = await decide("k", "O", [], placements, facts, new CallLog(file), new Budget(1_000_000, file), fakeJev({ type: "choice", choice: "rm -rf /", confidence: 1 }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.record.error).toContain("rejected");
   });
 
   test("maps Jev overload (529) to a retryable 429", async () => {
     const file = tmpLog();
-    const r = await decide("k", "O", [], placements, new CallLog(file), new Budget(1_000_000, file), fakeJev(null, 529));
+    const r = await decide("k", "O", [], placements, facts, new CallLog(file), new Budget(1_000_000, file), fakeJev(null, 529));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.status).toBe(429);
   });
 
   test("request carries only server-built option text", () => {
-    const req = buildRequest("O", ["T", "I", "L", "S"], placements);
+    const req = buildRequest("O", ["T", "I", "L", "S"], placements, facts);
     expect(Object.keys(req.questions.placement.criteria)).toEqual(placements.map(p => p.key));
     expect(req.state.upcoming_pieces).toHaveLength(3);
+  });
+
+  test("state carries board facts and options carry exact numbers", () => {
+    const b = emptyBoard();
+    b[TOTAL_ROWS - 1][0] = "#"; b[TOTAL_ROWS - 2][0] = "#"; b[TOTAL_ROWS - 1][1] = null;
+    b[TOTAL_ROWS - 2][1] = "#"; // column 2 covers one hole
+    const req = buildRequest("O", [], placements, boardFacts(b));
+    expect(req.state.board.column_heights.slice(0, 3)).toEqual([2, 2, 0]);
+    expect(req.state.board.covered_holes).toBe(1);
+    const opt = req.questions.placement.criteria[placements[0].key] as any;
+    expect(opt).toMatchObject({ lines_cleared: 0, covered_holes_added: 0, tallest_column_after: 2 });
   });
 });
 
@@ -114,7 +127,7 @@ describe("Budget", () => {
   test("rebuilds today's spend from the log at startup", async () => {
     const file = tmpLog();
     const log = new CallLog(file);
-    await decide("k", "O", [], enumeratePlacements(emptyBoard(), "O"), log, new Budget(1_000_000, file),
+    await decide("k", "O", [], enumeratePlacements(emptyBoard(), "O"), facts, log, new Budget(1_000_000, file),
       fakeJev({ type: "choice", choice: "r0x-1", confidence: 1 }));
     expect(new Budget(1_000_000, file).spent).toBe(700);
   });
@@ -124,7 +137,7 @@ describe("Budget", () => {
     const budget = new Budget(1_000_000, file);
     const placements = enumeratePlacements(emptyBoard(), "O");
     for (let i = 0; i < 3; i++) {
-      await decide("k", "O", [], placements, log, budget, fakeJev({ type: "choice", choice: "r0x-1", confidence: 1 }));
+      await decide("k", "O", [], placements, facts, log, budget, fakeJev({ type: "choice", choice: "r0x-1", confidence: 1 }));
     }
     expect(budget.callsToday).toBe(3);
     expect(new CallLog(file).inputTokens).toBe(2100);

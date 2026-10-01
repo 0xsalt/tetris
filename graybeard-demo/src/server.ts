@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { PIECE_NAMES } from "./game-logic";
-import { enumeratePlacements, parseBoard } from "./jev/placements";
+import { boardFacts, enumeratePlacements, parseBoard } from "./jev/placements";
 import { Budget, CallLog, USD_PER_INPUT_TOKEN, decide, loadApiKey } from "./jev/jev";
 
 // Loopback only. Tailnet access comes from `tailscale serve` in front of this port.
@@ -55,7 +55,7 @@ async function handleDecide(req: Request) {
   const placements = enumeratePlacements(board, piece);
   if (placements.length === 0) return json({ error: "no legal placement" }, 409);
 
-  const result = await decide(apiKey, piece, upcoming, placements, log, budget);
+  const result = await decide(apiKey, piece, upcoming, placements, boardFacts(board), log, budget);
   if (!result.ok) return json({ error: result.record.error, ...status() }, result.status);
   const chosen = placements.find(p => p.key === result.decision.choice)!;
   return json({ ...result.decision, rotation: chosen.rotation, x: chosen.x, record: result.record, ...status() });

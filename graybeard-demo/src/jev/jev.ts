@@ -85,20 +85,37 @@ export class CallLog {
   }
 }
 
-export function buildRequest(pieceName: string, upcoming: string[], placements: Placement[]) {
-  const criteria: Record<string, string> = {};
+/** The board as facts computed in code, per TypeSafe's guidance: Jev does not count cells reliably. */
+export interface BoardFacts {
+  column_heights: number[]; // filled height of each column, left to right, in rows
+  tallest_column: number;
+  covered_holes: number;    // empty cells with a filled cell somewhere above them
+}
+
+// Exact conditions, read literally (TypeSafe: "Jev 1.13 jaggedness", literal reading). The numbers
+// match the option fields, so every rule here can be checked against every option.
+export const PLACEMENT_INSTRUCTIONS =
+  "Choose where to land `current_piece` on a Tetris board 10 columns wide and 20 rows tall. " +
+  "Each option lists exactly what that landing does to the board. Weigh them in this order of importance: " +
+  "(1) `lines_cleared`: more is better, and 4 at once is the best move in the game. " +
+  "(2) `covered_holes_added`: 0 is strongly preferred; every covered hole blocks a row from clearing until it is dug out. " +
+  "(3) `tallest_column_after`: lower is better, and above 14 of 20 rows the game is close to being lost. " +
+  "(4) `bumpiness_after` (sum of height differences between neighbouring columns): lower is better. " +
+  "Use `upcoming_pieces` to leave a place where the next piece fits.";
+
+export function buildRequest(pieceName: string, upcoming: string[], placements: Placement[], board: BoardFacts) {
+  const criteria: Record<string, object> = {};
   for (const p of placements) criteria[p.key] = describePlacement(p);
   return {
-    state: { game: "Tetris", current_piece: pieceName, upcoming_pieces: upcoming.slice(0, 3) },
+    state: {
+      game: "Tetris",
+      board: { columns: 10, rows: 20, ...board },
+      current_piece: pieceName,
+      upcoming_pieces: upcoming.slice(0, 3),
+    },
     model: JEV_MODEL,
     questions: {
-      placement: {
-        type: "choice",
-        instructions:
-          "Pick the landing spot for the `current_piece` that a strong Tetris player would choose. " +
-          "Clearing lines is good. Covered holes are bad and hard to fix. A low stack and a flat surface keep the game alive.",
-        criteria,
-      },
+      placement: { type: "choice", instructions: PLACEMENT_INSTRUCTIONS, criteria },
     },
   };
 }
@@ -118,6 +135,7 @@ export async function decide(
   pieceName: string,
   upcoming: string[],
   placements: Placement[],
+  board: BoardFacts,
   log: CallLog,
   budget: Budget,
   fetchFn: typeof fetch = fetch,
@@ -134,7 +152,7 @@ export async function decide(
     res = await fetchFn(JEV_ENDPOINT, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(buildRequest(pieceName, upcoming, placements)),
+      body: JSON.stringify(buildRequest(pieceName, upcoming, placements, board)),
       signal: AbortSignal.timeout(10_000),
     });
   } catch (err) {

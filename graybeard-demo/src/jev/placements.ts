@@ -1,10 +1,11 @@
 // ============================================================
 // placements.ts — Every legal final landing spot for a piece,
 // with the features Jev weighs. Arithmetic stays here in code;
-// Jev only sees the plain-English description of each option.
+// Jev sees each option's computed outcome and the board's facts.
 // ============================================================
 
 import { COLS, TOTAL_ROWS, HIDDEN_ROWS, PIECES, isValid, type Board } from "../game-logic";
+import type { BoardFacts } from "./jev";
 
 export interface Placement {
   key: string;          // "r<rotation>x<column>", e.g. "r1x-1"
@@ -98,22 +99,38 @@ export function enumeratePlacements(board: Board, pieceName: string): Placement[
   return out;
 }
 
-/** Plain-English outcome of one placement. Numbers are bucketed into words, per Jev's guidance. */
-export function describePlacement(p: Placement): string {
+/** The board as facts computed here, so Jev never has to count cells. */
+export function boardFacts(board: Board): BoardFacts {
+  const heights = columnHeights(board);
+  return { column_heights: heights, tallest_column: Math.max(...heights), covered_holes: countHoles(board) };
+}
+
+/**
+ * One placement as a structured option: exact numbers matching the instruction's fields, plus a plain
+ * summary with each number bucketed into words, since Jev 1.13 reads numbers less reliably than words.
+ */
+export function describePlacement(p: Placement) {
   const lines = ["clears no lines", "clears 1 line", "clears 2 lines", "clears 3 lines", "clears 4 lines (a Tetris)"][p.linesCleared];
-  const holes = p.holesAdded <= 0 ? "creates no new covered holes"
-    : p.holesAdded === 1 ? "creates 1 new covered hole"
-    : "creates several new covered holes";
+  const holes = p.holesAdded <= 0 ? "adds no covered holes"
+    : p.holesAdded === 1 ? "adds 1 covered hole"
+    : `adds ${p.holesAdded} covered holes`;
   const visible = TOTAL_ROWS - HIDDEN_ROWS;
   const height = p.heightAfter <= visible * 0.3 ? "stack stays low"
     : p.heightAfter <= visible * 0.6 ? "stack at medium height"
-    : p.heightAfter <= visible * 0.8 ? "stack gets high"
+    : p.heightAfter <= visible * 0.7 ? "stack gets high"
     : "stack near the top, close to losing";
   const surface = p.bumpinessAfter <= 4 ? "surface stays flat"
     : p.bumpinessAfter <= 10 ? "surface somewhat uneven"
     : "surface jagged";
-  const span = p.columns[0] === p.columns[1] ? `column ${p.columns[0] + 1}` : `columns ${p.columns[0] + 1}-${p.columns[1] + 1}`;
-  return `Lands in ${span}; ${lines}; ${holes}; ${height}; ${surface}.`;
+  const span = p.columns[0] === p.columns[1] ? `${p.columns[0] + 1}` : `${p.columns[0] + 1}-${p.columns[1] + 1}`;
+  return {
+    columns: span,
+    lines_cleared: p.linesCleared,
+    covered_holes_added: Math.max(0, p.holesAdded),
+    tallest_column_after: p.heightAfter,
+    bumpiness_after: p.bumpinessAfter,
+    summary: `${lines}; ${holes}; ${height}; ${surface}.`,
+  };
 }
 
 /** Board from the wire format: TOTAL_ROWS strings of COLS chars, '1' filled, '0' empty. */
