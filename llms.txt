@@ -1,0 +1,33 @@
+# Tetris (Graybeard Tetris + Jev)
+
+> A browser Tetris game served by Bun. The game in graybeard-demo/ has an optional "Jev plays" mode: TypeSafe's Jev model picks each piece's landing spot through a small server that holds your API key.
+
+## Set up and play
+
+- Needs Bun 1.x (https://bun.sh).
+- Play without AI: `cd graybeard-demo && bun install && bun start`, then open http://localhost:3000. Keys: arrows move and rotate, Z rotates the other way, Space hard drops, C holds, P pauses.
+- Turn on Jev: put `TYPESAFE_API_KEY=<key>` in `~/.config/tetris-demo/jev.env` (`chmod 600`), then restart the server. The startup line says `jev enabled`, and a Jev switch appears under Next. Jev is off on every page load; only the switch turns it on.
+- Get a key: https://console.typesafe.ai/ (docs: https://docs.typesafe.ai/).
+- Cost: $42 per billion input tokens, output free. About 2,000 tokens per move, roughly $0.30 an hour at the built-in pace of one move a second. A daily cap (`JEV_DAILY_USD_CAP`, default 1.50 US dollars) stops calls once it is reached.
+- The server binds 127.0.0.1 only. To reach it from elsewhere, use a reverse proxy, such as `tailscale serve`, and list non-`*.ts.net` host names in `JEV_ALLOWED_HOSTS`.
+
+## How Jev decides
+
+- Browser sends `POST /api/decide` with `{board: 22 strings of ten 0/1 characters, piece, upcoming}`.
+- The server lists every legal landing spot (key `r<rotation>x<column>`). Each comes with lines cleared, covered holes added, tallest column after, bumpiness after, and a one-line summary.
+- The server calls `POST https://api.typesafe.ai/v1/systemone` with model `jev-latest`, the board facts as state, and one `choice` question.
+- Jev returns `{choice, probabilities, confidence}` plus token usage. The server rejects any choice not on the list, logs the call to JSONL, and returns the rotation and column. The browser then hard-drops the piece.
+
+## Files
+
+- [README.md](README.md): overview, demo GIF, bring-your-own-key setup, settings table
+- [graybeard-demo/src/server.ts](graybeard-demo/src/server.ts): HTTP server, budget, security headers, host allowlist
+- [graybeard-demo/src/jev/jev.ts](graybeard-demo/src/jev/jev.ts): the TypeSafe request, answer validation, call log, daily budget
+- [graybeard-demo/src/jev/placements.ts](graybeard-demo/src/jev/placements.ts): legal landing spots and board facts
+- [graybeard-demo/src/jev/client.ts](graybeard-demo/src/jev/client.ts): the in-page Jev switch and move loop
+- [graybeard-demo/src/public/index.html](graybeard-demo/src/public/index.html): the game itself, a single file
+
+## Optional
+
+- [graybeard-demo/tests/](graybeard-demo/tests/): `bun test` (game rules, Jev request and validation, server hardening)
+- [INSTALL.md](INSTALL.md): systemd and port options
