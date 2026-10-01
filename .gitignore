@@ -29,3 +29,6 @@ docs/internal/
 # Local tooling, never published
 .claude/
 .workgraph.json
+graybeard-demo/CLAUDE.md
+graybeard-demo/service-dashboard.yaml
+graybeard-demo/docs/BACKLOG.md
