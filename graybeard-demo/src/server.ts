@@ -14,6 +14,17 @@ const JEV_DAILY_TOKEN_CAP = Math.floor(JEV_DAILY_USD_CAP / USD_PER_INPUT_TOKEN);
 const JEV_RATE_PER_MIN = parseInt(process.env.JEV_RATE_PER_MIN || "120");
 // A board is 22 rows of 10 characters; nothing legitimate comes close to this.
 const MAX_BODY_BYTES = 16 * 1024;
+// Host names this server answers to. Refusing every other Host stops DNS rebinding: a page on an
+// attacker's domain that re-resolves to 127.0.0.1 would otherwise be same-origin and could spend
+// the budget. Tailscale names (*.ts.net) are allowed because only Tailscale controls that DNS.
+// Add others, comma-separated, in JEV_ALLOWED_HOSTS.
+const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]",
+  ...(process.env.JEV_ALLOWED_HOSTS || "").split(",").map(h => h.trim().toLowerCase()).filter(Boolean)]);
+
+function hostAllowed(req: Request) {
+  const host = (req.headers.get("host") || "").toLowerCase().replace(/:\d+$/, "");
+  return ALLOWED_HOSTS.has(host) || host.endsWith(".ts.net");
+}
 
 const apiKey = loadApiKey(JEV_ENV_FILE);
 const log = new CallLog(JEV_LOG_FILE);
@@ -107,6 +118,7 @@ async function handleDecide(req: Request) {
 }
 
 async function route(req: Request): Promise<Response> {
+  if (!hostAllowed(req)) return new Response("Misdirected Request", { status: 421 });
   const url = new URL(req.url);
 
   // No URL turns Jev on. Redirect old ?jev=... links to the plain address so none implies it can.

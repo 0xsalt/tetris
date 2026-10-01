@@ -31,9 +31,22 @@ const decide = (body: string, headers: Record<string, string> = { "Content-Type"
 
 describe("server hardening", () => {
   test("old ?jev links redirect on-site, never protocol-relative off-site", async () => {
-    const res = await fetch(`${BASE}//evil.example.com/x?jev=1`, { redirect: "manual" });
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/evil.example.com/x");
+    for (const path of ["//evil.example.com/x", "/.//evil.example.com/x", "/a/..//evil.example.com/x", "/\\evil.example.com/x"]) {
+      const res = await fetch(`${BASE}${path}?jev=1`, { redirect: "manual" });
+      expect(res.status).toBe(302);
+      expect(res.headers.get("location")).toBe("/evil.example.com/x");
+    }
+  });
+
+  test("refuses a Host it does not serve (DNS rebinding)", async () => {
+    expect((await fetch(`${BASE}/api/jev/status`, { headers: { Host: "evil.example" } })).status).toBe(421);
+    expect((await decide("{}", { "Content-Type": "application/json", Host: `evil.example:${PORT}` })).status).toBe(421);
+  });
+
+  test("answers to loopback and Tailscale host names", async () => {
+    for (const host of [`localhost:${PORT}`, `127.0.0.1:${PORT}`, "box.tail1234.ts.net:5059"]) {
+      expect((await fetch(`${BASE}/api/jev/status`, { headers: { Host: host } })).status).toBe(200);
+    }
   });
 
   test("decide refuses a non-JSON content type (cross-site simple POST)", async () => {
@@ -52,7 +65,11 @@ describe("server hardening", () => {
     const res = await fetch(`${BASE}/`);
     const csp = res.headers.get("content-security-policy") ?? "";
     expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).toMatch(/script-src 'self' 'sha256-/);
+    // The hash must be of the page's actual inline script, or the browser blocks the game.
+    const html = await Bun.file(`${import.meta.dir}/../src/public/index.html`).text();
+    const inline = html.match(/<script>([\s\S]*?)<\/script>/)![1];
+    const hash = new Bun.CryptoHasher("sha256").update(inline).digest("base64");
+    expect(csp).toContain(`script-src 'self' 'sha256-${hash}'`);
     expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
     expect(res.headers.get("x-frame-options")).toBe("DENY");
@@ -61,9 +78,12 @@ describe("server hardening", () => {
 
   // Last: it spends the rate window. Bad boards are counted but never reach TypeSafe.
   test("decide is rate limited", async () => {
-    const codes: number[] = [];
-    for (let i = 0; i < RATE + 2; i++) codes.push((await decide('{"board":[],"piece":"T"}')).status);
-    expect(codes.slice(0, RATE).every(c => c === 400)).toBe(true);
-    expect(codes.at(-1)).toBe(429);
+    const results: { status: number; error: string }[] = [];
+    for (let i = 0; i < RATE + 2; i++) {
+      const res = await decide('{"board":[],"piece":"T"}');
+      results.push({ status: res.status, error: (await res.json()).error });
+    }
+    expect(results.slice(0, RATE).every(r => r.status === 400)).toBe(true);
+    expect(results.at(-1)).toEqual({ status: 429, error: "rate limited" });
   });
 });
