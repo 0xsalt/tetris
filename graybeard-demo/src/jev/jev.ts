@@ -3,7 +3,7 @@
 // a daily token cap, and an append-only call log.
 // ============================================================
 
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { describePlacement, type Placement } from "./placements";
 
@@ -29,6 +29,7 @@ export interface CallRecord {
 
 export function loadApiKey(envFile: string): string | null {
   if (!existsSync(envFile)) return null;
+  if (statSync(envFile).mode & 0o077) console.warn(`warning: ${envFile} is readable by other users; chmod 600 it`);
   for (const line of readFileSync(envFile, "utf8").split("\n")) {
     const m = line.match(/^\s*TYPESAFE_API_KEY\s*=\s*(.+?)\s*$/);
     if (m) return m[1].replace(/^["']|["']$/g, "");
@@ -154,6 +155,8 @@ export async function decide(
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify(buildRequest(pieceName, upcoming, placements, board)),
       signal: AbortSignal.timeout(10_000),
+      // One fixed partner: never follow a redirect anywhere with the key attached.
+      redirect: "error",
     });
   } catch (err) {
     record.latency_ms = Math.round(performance.now() - started);

@@ -10,6 +10,10 @@ const JEV_LOG_FILE = process.env.JEV_LOG_FILE || `${homedir()}/.local/state/tetr
 // Daily spend ceiling in dollars, converted to billed input tokens at TypeSafe's list price.
 const JEV_DAILY_USD_CAP = parseFloat(process.env.JEV_DAILY_USD_CAP || "1.50");
 const JEV_DAILY_TOKEN_CAP = Math.floor(JEV_DAILY_USD_CAP / USD_PER_INPUT_TOKEN);
+// Decide calls per rolling minute, across all viewers. The client paces itself at one a second.
+const JEV_RATE_PER_MIN = parseInt(process.env.JEV_RATE_PER_MIN || "120");
+// A board is 22 rows of 10 characters; nothing legitimate comes close to this.
+const MAX_BODY_BYTES = 16 * 1024;
 
 const apiKey = loadApiKey(JEV_ENV_FILE);
 const log = new CallLog(JEV_LOG_FILE);
@@ -23,8 +27,44 @@ if (apiKey) {
   clientBundle = await built.outputs[0].text();
 }
 
+// The page's one inline script, allowed by hash so the CSP needs no 'unsafe-inline' for scripts.
+const indexHtml = await Bun.file(`${import.meta.dir}/public/index.html`).text();
+const scriptHashes = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+  .map(m => `'sha256-${new Bun.CryptoHasher("sha256").update(m[1]).digest("base64")}'`);
+
+const SECURITY_HEADERS: Record<string, string> = {
+  "Content-Security-Policy": [
+    "default-src 'self'",
+    `script-src 'self' ${scriptHashes.join(" ")}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; "),
+  "X-Content-Type-Options": "nosniff",
+  "X-Frame-Options": "DENY",
+  "Referrer-Policy": "no-referrer",
+};
+
+function withSecurityHeaders(res: Response) {
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+  return res;
+}
+
 function json(body: unknown, status = 200) {
   return Response.json(body, { status });
+}
+
+const recentDecides: number[] = [];
+function rateLimited() {
+  const now = Date.now();
+  while (recentDecides.length && now - recentDecides[0] > 60_000) recentDecides.shift();
+  if (recentDecides.length >= JEV_RATE_PER_MIN) return true;
+  recentDecides.push(now);
+  return false;
 }
 
 function status() {
@@ -44,7 +84,12 @@ function status() {
 
 async function handleDecide(req: Request) {
   if (!apiKey) return json({ error: "jev disabled: no key" }, 503);
+  // Another site can make a visitor's browser POST here, but not with a JSON content type (that
+  // needs a CORS preflight this server never answers), and browsers label it cross-site.
+  if (req.headers.get("sec-fetch-site") === "cross-site") return json({ error: "cross-site request refused" }, 403);
+  if (!req.headers.get("content-type")?.startsWith("application/json")) return json({ error: "content-type must be application/json" }, 415);
   if (budget.exhausted) return json({ error: "daily budget spent", ...status() }, 429);
+  if (rateLimited()) return json({ error: "rate limited" }, 429);
 
   const body: any = await req.json().catch(() => null);
   const board = parseBoard(body?.board);
@@ -61,34 +106,46 @@ async function handleDecide(req: Request) {
   return json({ ...result.decision, rotation: chosen.rotation, x: chosen.x, record: result.record, ...status() });
 }
 
+async function route(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+
+  // No URL turns Jev on. Redirect old ?jev=... links to the plain address so none implies it can.
+  // Collapse leading slashes: "//evil.example" as a Location is a protocol-relative off-site link.
+  if (url.searchParams.has("jev")) {
+    url.searchParams.delete("jev");
+    return Response.redirect(url.pathname.replace(/^\/+/, "/") + url.search, 302);
+  }
+
+  if (url.pathname === "/api/jev/status") return json({ ...status(), recent: log.recent.slice(-20) });
+  if (url.pathname === "/api/decide" && req.method === "POST") return handleDecide(req);
+  if (url.pathname === "/jev/client.js" && clientBundle) {
+    return new Response(clientBundle, { headers: { "Content-Type": "text/javascript" } });
+  }
+
+  const path = url.pathname === "/" ? "/index.html" : url.pathname;
+  const file = Bun.file(`${import.meta.dir}/public${path}`);
+  if (await file.exists()) {
+    if (path === "/index.html" && clientBundle) {
+      const html = (await file.text()).replace("</body>", `  <script type="module" src="/jev/client.js"></script>\n</body>`);
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+    return new Response(file);
+  }
+  return new Response("Not Found", { status: 404 });
+}
+
 const server = Bun.serve({
   hostname: HOSTNAME,
   port: parseInt(process.env.PORT || "3000"),
+  maxRequestBodySize: MAX_BODY_BYTES,
+  // Never Bun's development error page (source and stack), whatever NODE_ENV says.
+  development: false,
+  error(err) {
+    console.error(err);
+    return withSecurityHeaders(new Response("Internal Server Error", { status: 500 }));
+  },
   async fetch(req) {
-    const url = new URL(req.url);
-
-    // No URL turns Jev on. Redirect old ?jev=... links to the plain address so none implies it can.
-    if (url.searchParams.has("jev")) {
-      url.searchParams.delete("jev");
-      return Response.redirect(url.pathname + url.search, 302);
-    }
-
-    if (url.pathname === "/api/jev/status") return json({ ...status(), recent: log.recent.slice(-20) });
-    if (url.pathname === "/api/decide" && req.method === "POST") return handleDecide(req);
-    if (url.pathname === "/jev/client.js" && clientBundle) {
-      return new Response(clientBundle, { headers: { "Content-Type": "text/javascript" } });
-    }
-
-    const path = url.pathname === "/" ? "/index.html" : url.pathname;
-    const file = Bun.file(`${import.meta.dir}/public${path}`);
-    if (await file.exists()) {
-      if (path === "/index.html" && clientBundle) {
-        const html = (await file.text()).replace("</body>", `  <script type="module" src="/jev/client.js"></script>\n</body>`);
-        return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-      }
-      return new Response(file);
-    }
-    return new Response("Not Found", { status: 404 });
+    return withSecurityHeaders(await route(req));
   },
 });
 

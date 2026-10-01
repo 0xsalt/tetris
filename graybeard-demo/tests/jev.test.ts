@@ -99,6 +99,15 @@ describe("decide", () => {
     if (!r.ok) expect(r.status).toBe(429);
   });
 
+  test("never follows a redirect with the key attached", async () => {
+    const file = tmpLog();
+    let seen: RequestInit | undefined;
+    const spy = (async (_url: string, init: RequestInit) => { seen = init; throw new TypeError("redirect"); }) as unknown as typeof fetch;
+    const r = await decide("k", "O", [], placements, facts, new CallLog(file), new Budget(1_000_000, file), spy);
+    expect(seen?.redirect).toBe("error");
+    expect(r.ok).toBe(false);
+  });
+
   test("request carries only server-built option text", () => {
     const req = buildRequest("O", ["T", "I", "L", "S"], placements, facts);
     expect(Object.keys(req.questions.placement.criteria)).toEqual(placements.map(p => p.key));
