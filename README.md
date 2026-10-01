@@ -5,7 +5,6 @@ A fully functional Tetris game served by [Bun](https://bun.sh). Dark retro theme
 **[Play it live](https://0xsalt.github.io/tetris/)**
 
 <p align="center">
-  <img src="screenshots/start.png" width="420" alt="Start screen">
   <img src="screenshots/gameplay.png" width="420" alt="Gameplay">
 </p>
 
