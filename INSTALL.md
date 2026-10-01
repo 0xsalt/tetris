@@ -12,7 +12,7 @@ curl -fsSL https://bun.sh/install | bash
 
 ```bash
 git clone https://github.com/0xsalt/tetris.git
-cd tetris
+cd tetris/graybeard-demo
 bun install
 bun start
 ```

@@ -35,12 +35,12 @@ The [live page](https://0xsalt.github.io/tetris/) is the plain game. Jev runs on
 
 ```bash
 git clone https://github.com/0xsalt/tetris.git
-cd tetris
+cd tetris/graybeard-demo
 bun install
 bun start
 ```
 
-Opens on `http://localhost:3000` (or set `PORT` env var). See [INSTALL.md](INSTALL.md) for systemd service setup and other options.
+The game lives in `graybeard-demo/`; the `src/` at the repo root is an older copy without Jev. Opens on `http://localhost:3000` (or set `PORT` env var). See [INSTALL.md](INSTALL.md) for systemd service setup and other options.
 
 ## Controls
 
