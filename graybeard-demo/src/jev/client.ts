@@ -17,13 +17,6 @@ declare function startGame(): void;
 declare function hardDrop(): void;
 declare function isValid(nx: number, ny: number, rot: number, pieceName?: string): boolean;
 
-interface Status {
-  enabled: boolean; exhausted: boolean;
-  calls_total: number; calls_today: number;
-  tokens_today: number; daily_cap: number;
-  cost_today_usd: number; cost_total_usd: number; cost_per_call_usd: number; daily_cap_usd: number;
-}
-
 function boardWire(): string[] {
   return board.map(row => row.map(cell => (cell === null ? "0" : "1")).join(""));
 }
@@ -66,18 +59,20 @@ const toggle = document.getElementById("jev-toggle") as HTMLButtonElement;
 const stats = document.getElementById("jev-stats")!;
 const logEl = document.getElementById("jev-log")!;
 
-function showStatus(s: Status, extra = "") {
+// This game's Jev usage, reset by newGame(). Daily and all-time totals stay in /api/jev/status.
+const USD_PER_INPUT_TOKEN = 0.042 / 1_000_000;
+const run = { calls: 0, tokens: 0, ms: 0 };
+
+function showStatus() {
   const usd = (n: number) => `$${n < 0.01 && n > 0 ? n.toFixed(5) : n.toFixed(2)}`;
+  const cost = run.tokens * USD_PER_INPUT_TOKEN;
   // One short fact per line, each under ~20 characters, so nothing wraps in the 160px tablet panel.
   stats.innerHTML = [
-    `${usd(s.cost_per_call_usd)} per call`,
-    `${usd(s.cost_total_usd)} all time`,
-    `${usd(s.cost_today_usd)} / ${usd(s.daily_cap_usd)} today`,
-    `${s.calls_today.toLocaleString()} calls today`,
-    `${s.calls_total.toLocaleString()} calls total`,
-    `${(s.tokens_today / 1e6).toFixed(2)}M tok today`,
-    `seed ${seed}`,
-    ...(extra ? [extra] : []),
+    `${usd(run.calls ? cost / run.calls : 0)} per call`,
+    `${usd(cost)} this run`,
+    `${run.calls.toLocaleString()} turns`,
+    `${(run.tokens / 1000).toFixed(1)}K tokens`,
+    `${run.calls ? Math.round(run.ms / run.calls) : 0}ms avg`,
   ].join("<br>");
 }
 
@@ -94,6 +89,8 @@ function newGame() {
   seed = Math.floor(Math.random() * 2 ** 31);
   rng = mulberry32(seed);
   lastPiece = null;
+  run.calls = 0; run.tokens = 0; run.ms = 0;
+  showStatus();
   startGame();
   logLine(`new game ${seed}`, "#777");
 }
@@ -121,7 +118,12 @@ async function decideFor(piece: NonNullable<typeof currentPiece>) {
       body: JSON.stringify({ board: boardWire(), piece: piece.name, upcoming: nextQueue.slice(0, 3) }),
     });
     const body = await res.json();
-    showStatus(body);
+    if (body.record?.input_tokens) {
+      run.calls++;
+      run.tokens += body.record.input_tokens;
+      run.ms += body.record.latency_ms;
+    }
+    showStatus();
 
     if (res.status === 429 && body.exhausted) {
       logLine("budget spent: off", "#ff4466");
@@ -170,7 +172,7 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-fetch("/api/jev/status").then(r => r.json()).then(s => showStatus(s)).catch(() => {});
+showStatus();
 // Jev is OFF on every load, whatever the URL: opening the page must never spend money unseen.
 // Only the switch turns it on.
 requestAnimationFrame(tick);
