@@ -25,3 +25,7 @@ docs/internal/
 
 # Dorodango polish evidence
 .dorodango/
+
+# Local tooling, never published
+.claude/
+.workgraph.json
