@@ -14,7 +14,9 @@ A fully functional Tetris game served by [Bun](https://bun.sh). Dark retro theme
   <img src="screenshots/jev-plays.gif" width="800" alt="TypeSafe's Jev model placing pieces in Graybeard Tetris, a 55-second clip">
 </p>
 
-The game in `graybeard-demo/` has a "Jev plays" switch. When it is on, [TypeSafe](https://typesafe.ai)'s Jev model picks where every piece lands. The API key lives in a local env file on the server and never reaches the browser. For each piece, the server asks Jev one multiple-choice question. The code does the counting: it works out the board facts (column heights, tallest column, covered holes) and lists every legal landing spot with exact numbers for the lines it clears, the holes it covers, and the height and bumpiness it leaves behind. Jev only picks one of those options, and the server rejects any answer that isn't on the list. A daily dollar cap and a pace of one piece per second keep the bill small. Jev is off on every page load; only the switch turns it on.
+The game in graybeard-demo/ has a "Jev plays" switch. When it is on, TypeSafe's Jev model picks where every piece lands. 
+
+For each piece the server asks Jev one multiple-choice question. The code sends the board facts such as column heights, tallest column, covered holes, the holes it covers, and the height and bumpiness it leaves behind. Jev only picks one of those options, and the server rejects any answer that isn't on the list. Rate limiting flags include daily dollar cap and a pace of one piece per second. Jev is off on every page load; only the switch turns it on.
 
 The [live page](https://0xsalt.github.io/tetris/) is the plain game. Jev runs only on a server you start with your own key (see below).
 
