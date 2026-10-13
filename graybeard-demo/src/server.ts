@@ -1,12 +1,14 @@
 import { homedir } from "node:os";
 import { PIECE_NAMES } from "./game-logic";
 import { boardFacts, enumeratePlacements, parseBoard } from "./jev/placements";
-import { Budget, CallLog, USD_PER_INPUT_TOKEN, decide, loadApiKey } from "./jev/jev";
+import { Budget, CallLog, GameLog, USD_PER_INPUT_TOKEN, decide, loadApiKey } from "./jev/jev";
 
 // Loopback only. Tailnet access comes from `tailscale serve` in front of this port.
 const HOSTNAME = "127.0.0.1";
 const JEV_ENV_FILE = process.env.JEV_ENV_FILE || `${homedir()}/.config/tetris-demo/jev.env`;
 const JEV_LOG_FILE = process.env.JEV_LOG_FILE || `${homedir()}/.local/state/tetris-demo/jev-calls.jsonl`;
+// One line per finished game: seed, score, lines, level, pieces.
+const JEV_GAMES_FILE = process.env.JEV_GAMES_FILE || `${homedir()}/.local/state/tetris-demo/jev-games.jsonl`;
 // Daily spend ceiling in dollars, converted to billed input tokens at TypeSafe's list price.
 const JEV_DAILY_USD_CAP = parseFloat(process.env.JEV_DAILY_USD_CAP || "1.50");
 const JEV_DAILY_TOKEN_CAP = Math.floor(JEV_DAILY_USD_CAP / USD_PER_INPUT_TOKEN);
@@ -21,13 +23,37 @@ const MAX_BODY_BYTES = 16 * 1024;
 const ALLOWED_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]",
   ...(process.env.JEV_ALLOWED_HOSTS || "").split(",").map(h => h.trim().toLowerCase()).filter(Boolean)]);
 
+function requestHost(req: Request) {
+  return (req.headers.get("host") || "").toLowerCase().replace(/:\d+$/, "");
+}
+
 function hostAllowed(req: Request) {
-  const host = (req.headers.get("host") || "").toLowerCase().replace(/:\d+$/, "");
+  const host = requestHost(req);
   return ALLOWED_HOSTS.has(host) || host.endsWith(".ts.net");
 }
 
+// Tailscale logins allowed to spend the budget, comma-separated. `tailscale serve` adds the
+// Tailscale-User-Login header to each tailnet request (not for tagged devices) and replaces any
+// value the client sent. This server binds loopback only, so a local process could still forge it;
+// the boundary is "someone on this tailnet who is not one of these logins", not local users.
+const ALLOWED_LOGINS = new Set((process.env.JEV_ALLOWED_LOGINS || "").split(",").map(l => l.trim().toLowerCase()).filter(Boolean));
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/** Null when this request may spend the budget, else the refusal. Deny by default off loopback. */
+function spendRefusal(req: Request): Response | null {
+  if (ALLOWED_LOGINS.size === 0) {
+    // Unconfigured: a local bring-your-own-key run works on localhost, and nothing else can spend.
+    return LOOPBACK_HOSTS.has(requestHost(req)) ? null : json({ error: "jev locked: set JEV_ALLOWED_LOGINS" }, 403);
+  }
+  const login = (req.headers.get("tailscale-user-login") || "").toLowerCase();
+  return ALLOWED_LOGINS.has(login) ? null : json({ error: "this tailnet login may not use Jev" }, 403);
+}
+
+const isCount = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
+
 const apiKey = loadApiKey(JEV_ENV_FILE);
 const log = new CallLog(JEV_LOG_FILE);
+const games = new GameLog(JEV_GAMES_FILE);
 const budget = new Budget(JEV_DAILY_TOKEN_CAP, JEV_LOG_FILE);
 
 // The Jev client exists only when a key is present; the static page is untouched otherwise.
@@ -93,12 +119,31 @@ function status() {
   };
 }
 
-async function handleDecide(req: Request) {
+/** Checks shared by every POST that spends or records: key, caller, browser origin, body type. */
+function postRefusal(req: Request): Response | null {
   if (!apiKey) return json({ error: "jev disabled: no key" }, 503);
+  const refused = spendRefusal(req);
+  if (refused) return refused;
   // Another site can make a visitor's browser POST here, but not with a JSON content type (that
   // needs a CORS preflight this server never answers), and browsers label it cross-site.
   if (req.headers.get("sec-fetch-site") === "cross-site") return json({ error: "cross-site request refused" }, 403);
   if (!req.headers.get("content-type")?.startsWith("application/json")) return json({ error: "content-type must be application/json" }, 415);
+  return null;
+}
+
+async function handleGameEnd(req: Request) {
+  const refused = postRefusal(req);
+  if (refused) return refused;
+  const body: any = await req.json().catch(() => null);
+  const fields = ["game", "score", "lines", "level", "pieces"] as const;
+  if (!body || !fields.every(f => isCount(body[f]))) return json({ error: "bad request: need game, score, lines, level, pieces as counts" }, 400);
+  games.append({ ts: new Date().toISOString(), game: body.game, score: body.score, lines: body.lines, level: body.level, pieces: body.pieces });
+  return new Response(null, { status: 204 });
+}
+
+async function handleDecide(req: Request) {
+  const refused = postRefusal(req);
+  if (refused) return refused;
   if (budget.exhausted) return json({ error: "daily budget spent", ...status() }, 429);
   if (rateLimited()) return json({ error: "rate limited" }, 429);
 
@@ -111,7 +156,8 @@ async function handleDecide(req: Request) {
   const placements = enumeratePlacements(board, piece);
   if (placements.length === 0) return json({ error: "no legal placement" }, 409);
 
-  const result = await decide(apiKey, piece, upcoming, placements, boardFacts(board), log, budget);
+  const turn = { game: isCount(body?.game) ? body.game : undefined, turn: isCount(body?.turn) ? body.turn : undefined };
+  const result = await decide(apiKey!, piece, upcoming, placements, boardFacts(board), log, budget, fetch, turn);
   if (!result.ok) return json({ error: result.record.error, ...status() }, result.status);
   const chosen = placements.find(p => p.key === result.decision.choice)!;
   return json({ ...result.decision, rotation: chosen.rotation, x: chosen.x, record: result.record, ...status() });
@@ -130,6 +176,7 @@ async function route(req: Request): Promise<Response> {
 
   if (url.pathname === "/api/jev/status") return json({ ...status(), recent: log.recent.slice(-20) });
   if (url.pathname === "/api/decide" && req.method === "POST") return handleDecide(req);
+  if (url.pathname === "/api/jev/game" && req.method === "POST") return handleGameEnd(req);
   if (url.pathname === "/jev/client.js" && clientBundle) {
     return new Response(clientBundle, { headers: { "Content-Type": "text/javascript" } });
   }

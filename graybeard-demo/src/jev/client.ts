@@ -13,6 +13,9 @@ declare let gameState: string;
 declare let gravityPaused: boolean;
 declare let lastDrop: number;
 declare let rng: () => number;
+declare let score: number;
+declare let level: number;
+declare let lines: number;
 declare function startGame(): void;
 declare function hardDrop(): void;
 declare function isValid(nx: number, ny: number, rot: number, pieceName?: string): boolean;
@@ -25,6 +28,8 @@ let jevOn = false;
 let pending = false;
 let lastPiece: object | null = null;
 let seed = 0;
+let turn = 0; // pieces Jev has been asked about this game
+let countedPiece: object | null = null;
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
 const card = document.createElement("div");
@@ -89,6 +94,8 @@ function newGame() {
   seed = Math.floor(Math.random() * 2 ** 31);
   rng = mulberry32(seed);
   lastPiece = null;
+  turn = 0;
+  countedPiece = null;
   run.calls = 0; run.tokens = 0; run.ms = 0;
   showStatus();
   startGame();
@@ -111,11 +118,13 @@ async function decideFor(piece: NonNullable<typeof currentPiece>) {
   const started = performance.now();
   pending = true;
   gravityPaused = true;
+  // A retried piece keeps its number, so turn counts pieces, not calls.
+  if (piece !== countedPiece) { countedPiece = piece; turn++; }
   try {
     const res = await fetch("/api/decide", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ board: boardWire(), piece: piece.name, upcoming: nextQueue.slice(0, 3) }),
+      body: JSON.stringify({ board: boardWire(), piece: piece.name, upcoming: nextQueue.slice(0, 3), game: seed, turn }),
     });
     const body = await res.json();
     if (body.record?.input_tokens) {
@@ -159,6 +168,15 @@ async function decideFor(piece: NonNullable<typeof currentPiece>) {
   }
 }
 
+// The server's games log is the record of each game; a failed report only loses that one line.
+function reportGameEnd() {
+  fetch("/api/jev/game", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ game: seed, score, lines, level, pieces: turn }),
+  }).catch(() => logLine("game report failed", "#ff8844"));
+}
+
 function tick() {
   if (jevOn) {
     if (gameState === "playing" && currentPiece && currentPiece !== lastPiece && !pending) {
@@ -166,6 +184,7 @@ function tick() {
       decideFor(currentPiece);
     } else if (gameState === "gameover" && !restartTimer) {
       logLine("game over, restart 3s", "#777");
+      reportGameEnd();
       restartTimer = setTimeout(() => { restartTimer = null; if (jevOn) newGame(); }, 3000);
     }
   }

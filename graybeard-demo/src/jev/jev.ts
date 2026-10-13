@@ -25,11 +25,42 @@ export interface CallRecord {
   latency_ms: number;
   status: number;
   error?: string;
+  game: number | null;      // the game's seed, so a game's calls can be grouped from this log alone
+  turn: number | null;      // which piece of that game, counted from 1
 }
 
+/** Which game and which piece a decide call is for, as the client reports it. */
+export interface Turn {
+  game?: number;
+  turn?: number;
+}
+
+/** One finished game, as the client reports it. */
+export interface GameRecord {
+  ts: string;
+  game: number;
+  score: number;
+  lines: number;
+  level: number;
+  pieces: number;
+}
+
+export class GameLog {
+  constructor(private file: string) {
+    mkdirSync(dirname(file), { recursive: true });
+  }
+  append(rec: GameRecord) {
+    appendFileSync(this.file, JSON.stringify(rec) + "\n");
+  }
+}
+
+/** The key, or null when the file is missing or open to group or other users (Jev stays off). */
 export function loadApiKey(envFile: string): string | null {
   if (!existsSync(envFile)) return null;
-  if (statSync(envFile).mode & 0o077) console.warn(`warning: ${envFile} is readable by other users; chmod 600 it`);
+  if (statSync(envFile).mode & 0o077) {
+    console.error(`refusing ${envFile}: group or other users have access; chmod 600 it. Jev stays off.`);
+    return null;
+  }
   for (const line of readFileSync(envFile, "utf8").split("\n")) {
     const m = line.match(/^\s*TYPESAFE_API_KEY\s*=\s*(.+?)\s*$/);
     if (m) return m[1].replace(/^["']|["']$/g, "");
@@ -140,12 +171,14 @@ export async function decide(
   log: CallLog,
   budget: Budget,
   fetchFn: typeof fetch = fetch,
+  turn: Turn = {},
 ): Promise<{ ok: true; decision: Decision; record: CallRecord } | { ok: false; status: number; record: CallRecord }> {
   const started = performance.now();
   const record: CallRecord = {
     ts: new Date().toISOString(), piece: pieceName, options: placements.length,
     choice: null, confidence: null, probabilities: null, model: null,
     input_tokens: 0, output_tokens: 0, latency_ms: 0, status: 0,
+    game: turn.game ?? null, turn: turn.turn ?? null,
   };
 
   let res: Response;

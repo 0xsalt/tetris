@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { COLS, TOTAL_ROWS, PIECES, refillBag, type Board } from "../src/game-logic";
@@ -85,6 +85,17 @@ describe("decide", () => {
     expect(budget.spent).toBe(700);
   });
 
+  test("logs which game and piece each call was for", async () => {
+    const file = tmpLog();
+    await decide("k", "O", [], placements, facts, new CallLog(file), new Budget(1_000_000, file),
+      fakeJev({ type: "choice", choice: placements[0].key, confidence: 1 }), { game: 1234, turn: 7 });
+    await decide("k", "O", [], placements, facts, new CallLog(file), new Budget(1_000_000, file),
+      fakeJev({ type: "choice", choice: placements[0].key, confidence: 1 }));
+    const [withTurn, without] = readFileSync(file, "utf8").trim().split("\n").map(l => JSON.parse(l));
+    expect(withTurn).toMatchObject({ game: 1234, turn: 7 });
+    expect(without).toMatchObject({ game: null, turn: null });
+  });
+
   test("rejects an answer outside the placement list", async () => {
     const file = tmpLog();
     const r = await decide("k", "O", [], placements, facts, new CallLog(file), new Budget(1_000_000, file), fakeJev({ type: "choice", choice: "rm -rf /", confidence: 1 }));
@@ -159,8 +170,16 @@ describe("loadApiKey", () => {
   test("returns null when the file is missing", () => expect(loadApiKey("/nonexistent/jev.env")).toBeNull());
   test("reads TYPESAFE_API_KEY and strips quotes", async () => {
     const f = join(mkdtempSync(join(tmpdir(), "jev-key-")), "jev.env");
-    await Bun.write(f, `# comment\nTYPESAFE_API_KEY="abc123"\n`);
+    writeFileSync(f, `# comment\nTYPESAFE_API_KEY="abc123"\n`, { mode: 0o600 });
     expect(loadApiKey(f)).toBe("abc123");
+  });
+  test("refuses a key file that group or other users can read", () => {
+    const f = join(mkdtempSync(join(tmpdir(), "jev-key-")), "jev.env");
+    writeFileSync(f, "TYPESAFE_API_KEY=abc123\n");
+    for (const mode of [0o640, 0o604, 0o660]) {
+      chmodSync(f, mode);
+      expect(loadApiKey(f)).toBeNull();
+    }
   });
 });
 

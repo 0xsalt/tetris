@@ -82,14 +82,16 @@ The game lives in `graybeard-demo/`; the `src/` at the repo root is an older cop
 
 | Variable | Default | What it does |
 |----------|---------|--------------|
-| `JEV_ENV_FILE` | `~/.config/tetris-demo/jev.env` | Where the key is read from |
+| `JEV_ENV_FILE` | `~/.config/tetris-demo/jev.env` | Where the key is read from. A file that group or other users can read is refused, and Jev stays off. |
 | `JEV_DAILY_USD_CAP` | `1.50` | Daily spending limit in US dollars |
-| `JEV_LOG_FILE` | `~/.local/state/tetris-demo/jev-calls.jsonl` | Log of every call: piece, choice, confidence, tokens, latency. Never the key. |
+| `JEV_LOG_FILE` | `~/.local/state/tetris-demo/jev-calls.jsonl` | Log of every call: game, piece number, piece, choice, confidence, tokens, latency. Never the key. |
+| `JEV_GAMES_FILE` | `~/.local/state/tetris-demo/jev-games.jsonl` | One line per finished Jev game: game seed, score, lines, level, pieces |
+| `JEV_ALLOWED_LOGINS` | (empty) | Tailscale logins that may turn Jev on, comma-separated. Empty means only `localhost` may. |
 | `JEV_RATE_PER_MIN` | `120` | Most Jev calls per minute, across all viewers |
 | `JEV_ALLOWED_HOSTS` | (empty) | Extra host names the server answers to. `localhost`, `127.0.0.1` and Tailscale `*.ts.net` names are always allowed. |
 | `PORT` | `3000` | Port, on 127.0.0.1 only |
 
-The server listens on loopback only. To reach it from other machines, put a reverse proxy in front of it, such as `tailscale serve`, and add the proxy's host name to `JEV_ALLOWED_HOSTS` if it is not a `*.ts.net` name.
+The server listens on loopback only. To reach it from other machines, put a reverse proxy in front of it, such as `tailscale serve`, and add the proxy's host name to `JEV_ALLOWED_HOSTS` if it is not a `*.ts.net` name. Off `localhost`, Jev answers only the logins in `JEV_ALLOWED_LOGINS`, read from the `Tailscale-User-Login` header that `tailscale serve` adds. Tagged devices get no such header, so they cannot spend.
 
 ### How a move works
 
